@@ -1,0 +1,52 @@
+# Copy this file to terraform.tfvars and fill in your own values:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# terraform.tfvars must NOT be committed (already covered by .gitignore).
+# It holds only what is specific to WHO is running and from WHERE -- everything
+# that describes the project itself has a default in variables.tf.
+
+# ---------------------------------------------------------------------------
+# Required -- no default; Terraform prompts if left unset
+# ---------------------------------------------------------------------------
+
+# Person accountable for the resources. Goes into the Owner tag of everything.
+owner = "your-name"
+
+# Your public IP in /32 CIDR form -- the only address allowed on port 22.
+# Find it with:
+#   echo $(curl -s https://checkip.amazonaws.com)/32
+# Home IPs change: re-check this before every apply.
+ssh_ingress_cidr = "YOUR.IP.HERE/32"
+
+# ---------------------------------------------------------------------------
+# Optional -- sensible defaults already set in variables.tf; uncomment to change
+# ---------------------------------------------------------------------------
+
+# EC2 key pair for SSH access. Without it the instance still boots, but there
+# is no way in to read /var/log/cloud-init-output.log when something breaks.
+# The AWS Academy Learner Lab ships with a key pair named "vockey".
+# key_name = "vockey"
+
+# Region for all resources. The Learner Lab only allows us-east-1.
+# aws_region = "us-east-1"
+
+# Project identifier, used as a name prefix and in the Project tag.
+# project_name = "atividade1-pos-devops-iac"
+
+# Public HTTP port.
+# http_port = 80
+
+# Content shown on the published page. Defaults describe this assignment;
+# override only if the project is reused for a different class.
+# student_name   = "Your Full Name"
+# class_name     = "Your Class"
+# course_name    = "Course Name"
+# professor_name = "Professor Name"
+
+# ---------------------------------------------------------------------------
+# Not configurable here
+# ---------------------------------------------------------------------------
+# instance_type and vpc_cidr vary per workspace and are set in locals.tf:
+#   dev  -> t2.micro, 10.10.0.0/16
+#   prod -> t3.micro, 10.20.0.0/16
