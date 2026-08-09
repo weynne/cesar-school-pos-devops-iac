@@ -1000,26 +1000,62 @@ guarda o histórico do state.
 
 ## Evidências da entrega
 
-Todas na pasta [`evidencias/`](evidencias/):
+Todas na pasta [`evidencias/`](evidencias/), numeradas na ordem em que foram
+geradas. Os `.md` guardam a saída completa do terminal; os `.png` mostram o
+console da AWS e o navegador.
+
+**Preparação**
 
 | Arquivo | Conteúdo |
 | --- | --- |
-| `apply-dev.txt` | Saída completa do `apply` no workspace `dev`, com `Apply complete!` |
-| `apply-prod.txt` | Idem para `prod` |
-| `destroy-dev.txt` | Saída completa do `destroy` em `dev`, com `Destroy complete!` |
-| `destroy-prod.txt` | Idem para `prod` |
-| `navegador-dev.png` | Página aberta pelo IP público, ambiente `dev` |
-| `navegador-prod.png` | Idem para `prod` |
-| `tags-plan.txt` | Trecho do `plan` mostrando o `tags_all` aplicado |
-| `s3-workspaces.txt` | `aws s3 ls` provando os states isolados por workspace |
+| `evidencia_01_init_fmt_validate_workspace.png` | `init`, `fmt`, `validate` e seleção de workspace |
 
-Os ambientes usados para gerar as evidências foram **`dev` e `prod`**. Cada saída
-de `apply` inclui os outputs `workspace` e `instance_type`, o que torna cada
-evidência autoidentificável.
+**Ambiente `dev`** (`t2.micro`, `10.10.0.0/16`)
 
-O `tags-plan.txt` existe por um motivo específico: as tags organizacionais vêm do
-`default_tags` no provider, então **não aparecem escritas no código dos módulos**.
-O `tags_all` do plano é a prova de que elas são efetivamente aplicadas.
+| Arquivo | Conteúdo |
+| --- | --- |
+| `evidencia_02_dev_apply.md` | Saída completa do `apply`, com `Apply complete! Resources: 12 added` |
+| `evidencia_03_dev_apply.png` | O mesmo `apply` no terminal |
+| `evidencia_04_dev_webpage_ip.png` | Página servida pelo IP público |
+| `evidencia_05_dev_webpage_dns.png` | Mesma página pelo DNS público |
+| `evidencia_06_dev_ec2_sg.png` | Security Group: porta 22 restrita a um `/32`, porta 80 aberta |
+| `evidencia_07_dev_ec2_vpc.png` | VPC, subnet, route table e Internet Gateway no console |
+| `evidencia_08_dev_ec2_tags.png` | Tags efetivamente aplicadas na instância |
+| `evidencia_09_dev_ec2_ssh.png` | Acesso SSH à instância |
+
+**Ambiente `prod`** (`t3.micro`, `10.20.0.0/16`)
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `evidencia_10_prod_apply.md` | Saída completa do `apply`, com `Apply complete! Resources: 12 added` |
+| `evidencia_11_prod_apply.png` | O mesmo `apply` no terminal |
+| `evidencia_12_prod_webpage_ip.png` | Página servida pelo IP público |
+| `evidencia_13_prod_webpage_dns.png` | Mesma página pelo DNS público |
+| `evidencia_14_prod_ec2_sg.png` | Security Group do ambiente de produção |
+| `evidencia_15_prod_ec2_vpc.png` | Rede do ambiente de produção no console |
+| `evidencia_16_prod_ec2_tags.png` | Tags efetivamente aplicadas na instância |
+| `evidencia_17_prod_ec2_ssh.png` | Acesso SSH à instância |
+
+**State remoto e limpeza**
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `evidencia_18_bucket_s3.png` | Bucket do backend com os states separados por workspace |
+| `evidencia_19_bucket_s3.png` | Detalhe do caminho `env:/` que isola `dev` de `prod` |
+| `evidencia_20_prod_destroy.md` | `Destroy complete! Resources: 12 destroyed` em `prod` |
+| `evidencia_21_prod_destroy.png` | O mesmo `destroy` no terminal |
+| `evidencia_22_dev_destroy.md` | `Destroy complete! Resources: 12 destroyed` em `dev` |
+| `evidencia_23_dev_destroy.png` | O mesmo `destroy` no terminal |
+
+Cada saída de `apply` inclui os outputs `workspace` e `instance_type`, o que torna
+a evidência autoidentificável. Comparando `evidencia_02_dev_apply.md` com
+`evidencia_10_prod_apply.md` fica visível o que muda entre os ambientes:
+`t2.micro` contra `t3.micro`.
+
+As capturas de tags existem por um motivo específico. As tags organizacionais vêm
+do `default_tags` no provider, então **não aparecem escritas no código dos
+módulos**. Quem procurar por `grep Environment modules/` não acha nada, e o
+console é a prova de que elas chegam a todos os recursos.
 
 ---
 
