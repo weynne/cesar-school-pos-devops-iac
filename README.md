@@ -346,8 +346,7 @@ O operador `~>` é o *pessimistic constraint*: `~> 6.0` aceita `6.1`, `6.58`, ma
 **nunca** `7.0`. Traduz "confio em correções e novidades compatíveis, não confio
 em uma quebra de contrato".
 
-> [!NOTE]
-> Não existe bloco `provider` aqui. **Declarar do que se precisa** e
+> **Nota:** não existe bloco `provider` aqui. **Declarar do que se precisa** e
 > **configurar como usar** são coisas separadas. Por isso módulos filhos têm
 > `versions.tf` mas nunca têm `provider`.
 
@@ -373,10 +372,9 @@ terraform {
 }
 ```
 
-> [!WARNING]
-> **Nenhuma variável, nenhuma interpolação, nenhum `local`.** O backend é lido no
-> `init`, antes de o Terraform sequer saber que variáveis existem. Tudo aqui é
-> literal, inclusive o nome do bucket. Tentar `bucket = var.bucket_name` falha com
+> **Atenção, nenhuma variável nem interpolação:** o backend é lido no `init`,
+> antes de o Terraform sequer saber que variáveis existem. Tudo aqui é literal,
+> inclusive o nome do bucket. Tentar `bucket = var.bucket_name` falha com
 > `Variables not allowed`.
 
 O `key` é o caminho **do workspace `default`**. Os outros ganham um prefixo
@@ -417,8 +415,7 @@ as quatro chaves a **todo recurso taggeável**, inclusive os criados dentro dos
 módulos, sem repetir uma linha. `Name` fica de fora de propósito. Ele muda por
 recurso e é montado dentro do módulo.
 
-> [!IMPORTANT]
-> **Nenhuma credencial aqui, nunca.** O provider resolve credenciais sozinho, nesta
+> **Importante, nenhuma credencial aqui:** o provider as resolve sozinho, nesta
 > ordem: variáveis de ambiente → `~/.aws/credentials` → metadata da instância.
 > Credencial em `.tf` vai para o histórico do Git e não sai mais.
 
@@ -453,10 +450,8 @@ O critério que decide se algo vira variável: **"isso muda de execução para
 execução?"** Se sim, variável. Se não, `local`. E se muda mas existe uma resposta
 correta universal, variável **com** default.
 
-> [!TIP]
-> Sem a `validation`, um CIDR errado
-> só falha no meio do `apply`, com uma mensagem da AWS que não diz qual variável
-> causou o problema.
+> **Dica:** sem a `validation`, um CIDR errado só falha no meio do `apply`, com
+> uma mensagem da AWS que não diz qual variável causou o problema.
 
 </details>
 
@@ -525,9 +520,8 @@ module "web_server" {
 `depends_on` só faria falta se houvesse uma dependência **invisível ao código**.
 Não é o caso, e usá-lo aqui seria ruído.
 
-> [!NOTE]
-> O label do bloco é `snake_case` (`module "web_server"`) e o diretório é
-> `kebab-case` (`./modules/web-server`). Não é inconsistência: é a convenção dos
+> **Nota:** o label do bloco é `snake_case` (`module "web_server"`) e o diretório
+> é `kebab-case` (`./modules/web-server`). Não é inconsistência: é a convenção dos
 > módulos oficiais da HashiCorp, com identificador HCL em snake e caminho em kebab.
 
 **Bloco `resource` com `precondition`**, o guard que impede aplicar no workspace
