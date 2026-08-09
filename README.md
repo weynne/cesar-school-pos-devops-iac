@@ -317,7 +317,7 @@ Duas notas sobre esse fluxo:
 | `module` | `main.tf` | Compõe um conjunto de recursos | tudo |
 | `output` | `outputs.tf` | Devolve valor ao chamador | tudo |
 
-### Arquivo por arquivo
+### Arquivo por arquivo: a raiz
 
 <details>
 <summary><b>1. <code>versions.tf</code></b>: o contrato de versões</summary>
@@ -577,6 +577,153 @@ tem estado público. É a mesma ideia de `private` em orientação a objetos.
 Os outputs `workspace` e `instance_type` não são exigidos pelo enunciado; existem
 para que **cada evidência de apply se autoidentifique**, dizendo em qual ambiente
 rodou e com que tipo de instância.
+
+</details>
+
+### Arquivo por arquivo: os módulos
+
+Um módulo é uma caixa preta. O root não enxerga os recursos lá dentro, só o que
+entra pelas `variable` e o que sai pelos `output`. Esse contrato é a parte que
+mais importa, porque define o que pode mudar sem quebrar quem chama.
+
+```mermaid
+flowchart LR
+    subgraph R["main.tf (root)"]
+        LP["local.name_prefix<br/>local.config"]
+        VR["var.* do projeto"]
+    end
+
+    subgraph N["module.network"]
+        NI["name_prefix<br/>vpc_cidr<br/>tags"]
+        NO["vpc_id<br/>public_subnet_id<br/>internet_gateway_id"]
+    end
+
+    subgraph W["module.web_server"]
+        WI["vpc_id · subnet_id<br/>instance_type · http_port<br/>ssh_ingress_cidr · ...13 no total"]
+        WO["instance_id · public_ip<br/>public_dns<br/>security_group_id"]
+    end
+
+    OUT["outputs.tf (root)"]
+
+    LP --> NI
+    LP --> WI
+    VR --> WI
+    NO --> WI
+    WO --> OUT
+```
+
+Os quatro arquivos se repetem nos dois módulos, com papéis fixos:
+
+| Arquivo | Papel dentro do módulo |
+| --- | --- |
+| `main.tf` | Os recursos. É a única parte que a AWS enxerga |
+| `variables.tf` | O que o módulo aceita receber, com `validation` própria |
+| `outputs.tf` | O que o módulo devolve. Nada além disso é acessível de fora |
+| `versions.tf` | `required_providers`. Declara a dependência sem configurá-la |
+
+Nenhum deles tem bloco `provider` nem `backend`, pelas razões da seção
+[Estrutura do repositório](#estrutura-do-repositório).
+
+<details>
+<summary><b>8. <code>modules/network/</code></b>: VPC, subnet e saída para a internet</summary>
+
+**Interface**
+
+| Entrada | Tipo | Obrigatória |
+| --- | --- | :---: |
+| `name_prefix` | `string` | ✅ |
+| `vpc_cidr` | `string` | ✅ |
+| `tags` | `map(string)` | (default `{}`) |
+
+| Saída | Para que serve |
+| --- | --- |
+| `vpc_id` | Alimenta o Security Group do outro módulo |
+| `public_subnet_id` | Alimenta a instância EC2 |
+| `internet_gateway_id` | Não é consumido hoje. Existe porque um módulo de rede sem ele fica incompleto para reuso |
+
+**A `validation` do `vpc_cidr`** é a mais interessante do projeto, e vai além de
+checar se o CIDR é válido:
+
+```hcl
+condition = can(cidrnetmask(var.vpc_cidr)) && tonumber(split("/", var.vpc_cidr)[1]) <= 24
+```
+
+O segundo termo existe por uma razão concreta. O `main.tf` deriva a subnet com
+`cidrsubnet(cidr, 8, 0)`, que soma 8 bits ao prefixo. Um `/25` viraria `/33`, e
+mesmo um `/21` produziria uma subnet menor que o `/28` mínimo que a AWS aceita.
+Sem esse teto, o erro só apareceria no meio do `apply`, vindo da API da AWS.
+
+**Os cinco recursos e o data source** estão descritos na tabela da seção
+[O que é provisionado](#o-que-é-provisionado). O que o código acrescenta são três
+linhas que não têm sintoma de erro, apenas silêncio:
+
+| Linha | O que acontece se faltar |
+| --- | --- |
+| `enable_dns_hostnames = true` | `public_dns` volta vazio. Nenhum erro |
+| `map_public_ip_on_launch = true` | A instância sobe sem IP público. Nenhum erro |
+| `aws_route_table_association` | Tudo existe, nada responde. Nenhum erro |
+
+O `data "aws_availability_zones"` filtra por `opt-in-status = opt-in-not-required`.
+Sem o filtro, a lista poderia trazer uma AZ que exige habilitação prévia na conta,
+e a subnet falharia ao ser criada.
+
+</details>
+
+<details>
+<summary><b>9. <code>modules/web-server/</code></b>: firewall, instância e a página</summary>
+
+**Interface**
+
+Treze entradas, agrupadas por finalidade:
+
+| Grupo | Variáveis |
+| --- | --- |
+| Ligação com a rede | `vpc_id`, `subnet_id` |
+| Dimensionamento | `instance_type`, `name_prefix` |
+| Acesso | `http_port`, `ssh_ingress_cidr`, `key_name` |
+| Conteúdo da página | `student_name`, `class_name`, `course_name`, `professor_name`, `page_title`, `page_subtitle`, `stack_items`, `environment` |
+| Origem da imagem | `ami_parameter_name` |
+
+| Saída | Para que serve |
+| --- | --- |
+| `public_ip` | Vira `instance_public_ip` e `web_url` no root |
+| `public_dns` | Vira `instance_public_dns`, exigido pelo enunciado |
+| `instance_id`, `security_group_id` | Para inspeção via CLI e `terraform state show` |
+
+O `ami_parameter_name` merece atenção. O path do SSM poderia estar fixo no
+`main.tf`, mas como variável o módulo passa a servir para qualquer distribuição
+publicada pela AWS, bastando trocar o parâmetro na chamada.
+
+**A renderização em dois estágios** acontece num bloco `locals` dentro do módulo,
+e é o que mantém o HTML fora do código Terraform:
+
+```mermaid
+flowchart LR
+    TPL["index.html.tftpl<br/>variáveis do template"]
+    HTML["local.page_html<br/>HTML já resolvido"]
+    SH["user_data.sh.tftpl<br/>recebe page_html"]
+    UD["local.user_data<br/>script de boot completo"]
+
+    TPL -->|"templatefile()"| HTML
+    HTML --> SH
+    SH -->|"templatefile()"| UD
+    UD --> EC2["aws_instance.user_data"]
+```
+
+O `${path.module}` nas duas chamadas resolve o caminho relativo ao módulo, não a
+quem o chama. Com um caminho relativo comum, mover o módulo quebraria a leitura
+dos templates.
+
+**As regras do Security Group são três recursos separados**, não blocos `ingress`
+dentro do grupo. O motivo está em
+[Decisões de arquitetura](#decisões-de-arquitetura). Uma pegadinha da API vale o
+registro: no egress liberado, `ip_protocol = "-1"` exige que `from_port` e
+`to_port` sejam **omitidos**. Informar `-1` neles causa erro.
+
+**A instância** usa `data.aws_ssm_parameter.ami.insecure_value` como AMI, com
+`user_data_replace_on_change = true`, `metadata_options` com IMDSv2 e volume raiz
+`gp3` criptografado. Cada uma dessas escolhas está justificada em
+[Decisões de arquitetura](#decisões-de-arquitetura).
 
 </details>
 
