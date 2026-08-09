@@ -1,0 +1,14 @@
+#!/bin/bash
+# -x prints every command to /var/log/cloud-init-output.log, which is the only
+# way to diagnose a boot-time failure after the fact.
+set -euxo pipefail
+
+# Order matters: /var/www/html is created by the httpd package.
+dnf install -y httpd
+systemctl enable --now httpd
+
+# Quoted delimiter: bash performs no expansion. Terraform already rendered
+# the page, so anything that looks like a shell variable must survive as-is.
+cat > /var/www/html/index.html <<'PAGE'
+${page_html}
+PAGE
