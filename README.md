@@ -2,7 +2,8 @@
 
 Atividade 1 da disciplina de Infraestrutura como Código (IaC) e Gerenciamento de
 Configuração: provisionamento, na AWS, da infraestrutura mínima para hospedar uma
-página web. Tudo escrito como código, com state remoto e dois ambientes.
+página web. Toda a infraestrutura é definida como código, com state remoto e dois
+ambientes.
 
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white)
@@ -34,7 +35,9 @@ página web. Tudo escrito como código, com state remoto e dois ambientes.
 ## O que é provisionado
 
 Uma VPC própria com uma subnet pública, saída para a internet e uma instância EC2
-servindo uma página HTML via `httpd`. São **12 recursos** por ambiente.
+servindo uma página HTML via `httpd`. São **12 recursos gerenciados pelo Terraform**
+por ambiente: 11 recursos da AWS e um `terraform_data` usado como guard do
+workspace.
 
 ```mermaid
 flowchart LR
@@ -42,9 +45,9 @@ flowchart LR
 
     subgraph VPC["☁️ VPC · 10.10.0.0/16 (dev)"]
         IGW["🚪 Internet Gateway"]
+        SG["🛡️ Security Group"]
         subgraph SN["🟩 Subnet pública · 10.10.0.0/24"]
             RT["🗺️ Route Table<br/>0.0.0.0/0 → IGW"]
-            SG["🛡️ Security Group"]
             EC2["🖥️ EC2 · Amazon Linux 2023<br/>httpd + user_data"]
         end
     end
@@ -54,8 +57,8 @@ flowchart LR
     User -->|":80 de 0.0.0.0/0"| IGW
     User -->|":22 só do seu IP"| IGW
     IGW --> RT
-    RT --> SG
-    SG --> EC2
+    RT --> EC2
+    SG -.->|associado à interface da instância| EC2
     EC2 -.->|estado registrado em| S3
 ```
 
@@ -124,7 +127,7 @@ flowchart LR
 
 Este projeto usa `use_lockfile = true`, o lock **nativo do S3** disponível a partir
 do Terraform 1.10. Ele cria um objeto `.tflock` ao lado do state durante a operação.
-A tabela DynamoDB que material mais antigo pede **não é mais necessária**.
+A tabela DynamoDB exigida em materiais mais antigos não é necessária.
 
 **Referências oficiais:**
 
@@ -224,6 +227,7 @@ Depois, ajuste o `bucket` em [`backend.tf`](backend.tf).
 ├── variables.tf                # entradas do projeto
 ├── main.tf                     # guard de workspace + composição dos módulos
 ├── outputs.tf                  # IP, DNS, URL, workspace, tipo de instância
+├── .terraform.lock.hcl         # versão exata do provider (versionado, ver abaixo)
 ├── terraform.tfvars.example    # molde para o terraform.tfvars local
 ├── evidencias/                 # saídas de apply/destroy e prints
 └── modules/
@@ -246,7 +250,7 @@ Regras que separam o módulo raiz dos módulos filhos. O Terraform **não** impe
 que sejam violadas:
 
 - Módulo tem `versions.tf` com `required_providers`, declarando *do que precisa*.
-- Módulo **nunca** tem bloco `provider`; ele herda do root. Provider dentro de
+- Módulo **nunca** tem bloco `provider`; ele herda da raiz. Provider dentro de
   módulo quebra o `destroy` e impede a remoção do módulo depois.
 - Módulo **nunca** tem bloco `backend`.
 
@@ -267,8 +271,8 @@ por arquivo, de cima para baixo.
 Consequências práticas:
 
 - Os nomes `main.tf`, `variables.tf`, `outputs.tf` são **convenção para humanos**.
-  Este projeto inteiro funcionaria idêntico dentro de um único `main.tf`, só que
-  ilegível.
+  Este projeto inteiro funcionaria de forma idêntica dentro de um único
+  `main.tf`, só que ilegível.
 - Um `local` definido em `locals.tf` pode ser usado em `main.tf` sem nenhuma
   declaração de import. Não existe import.
 - Renomear um arquivo `.tf` **não** gera mudança no `plan`. Mover um `resource`
@@ -278,7 +282,7 @@ O que **de fato** define a ordem é a **referência**: quando `module.web_server
 lê `module.network.vpc_id`, o Terraform infere que a rede vem primeiro. Por isso
 este projeto não usa `depends_on` em lugar nenhum.
 
-### Ordem real de avaliação
+### Em que ordem o Terraform avalia
 
 ```mermaid
 flowchart TD
@@ -345,6 +349,24 @@ terraform {
 O operador `~>` é o *pessimistic constraint*: `~> 6.0` aceita `6.1`, `6.58`, mas
 **nunca** `7.0`. Traduz "confio em correções e novidades compatíveis, não confio
 em uma quebra de contrato".
+
+**O `.terraform.lock.hcl` é o outro metade desse contrato, e é versionado.** A
+distinção é a mesma de qualquer gerenciador de dependências:
+
+| Arquivo | Responde | Versionado |
+| --- | --- | :---: |
+| `versions.tf` (`~> 6.0`) | O que é **aceitável** | ✅ |
+| `.terraform.lock.hcl` | O que foi **efetivamente usado** (`6.58.0`, com hashes) | ✅ |
+| `.terraform/` | Os binários baixados | ❌ |
+
+Sem o lockfile, dois `init` em dias diferentes podem resolver `~> 6.0` para
+versões distintas e produzir planos distintos a partir do mesmo código. Com ele,
+o `init` reinstala exatamente `6.58.0` e verifica os hashes, o que fecha também
+o vetor de um artefato adulterado no registry. Para subir de versão é preciso
+um ato explícito: `terraform init -upgrade`, que reescreve o lock e vira commit.
+
+É o oposto exato do `.tfstate`, que **nunca** vai para o Git: o lock descreve
+*ferramenta*, o state descreve *infraestrutura* e contém dados sensíveis.
 
 > **Nota:** não existe bloco `provider` aqui. **Declarar do que se precisa** e
 > **configurar como usar** são coisas separadas. Por isso módulos filhos têm
@@ -415,8 +437,9 @@ as quatro chaves a **todo recurso taggeável**, inclusive os criados dentro dos
 módulos, sem repetir uma linha. `Name` fica de fora de propósito. Ele muda por
 recurso e é montado dentro do módulo.
 
-> **Importante, nenhuma credencial aqui:** o provider as resolve sozinho, nesta
-> ordem: variáveis de ambiente → `~/.aws/credentials` → metadata da instância.
+> **Importante, nenhuma credencial aqui:** o provider resolve as credenciais
+> sozinho, nesta ordem: variáveis de ambiente → `~/.aws/credentials` → metadata da
+> instância.
 > Credencial em `.tf` vai para o histórico do Git e não sai mais.
 
 </details>
@@ -424,18 +447,14 @@ recurso e é montado dentro do módulo.
 <details>
 <summary><b>4. <code>variables.tf</code></b>: a superfície de entrada</summary>
 
-Cada `variable` é um parâmetro do projeto. Anatomia completa:
+Cada `variable` é um parâmetro do projeto. Na raiz elas são deliberadamente
+simples: descrição, tipo e, quando existe resposta universal, um default.
 
 ```hcl
 variable "ssh_ingress_cidr" {
-  description = "Public IP allowed on port 22, in /32 CIDR form"
+  description = "Your public IP in /32 CIDR form, allowed to reach port 22. Find it with: echo $(curl -s https://checkip.amazonaws.com)/32"
   type        = string
   # sem default = obrigatória
-
-  validation {
-    condition     = can(cidrhost(var.ssh_ingress_cidr, 0)) && endswith(var.ssh_ingress_cidr, "/32")
-    error_message = "Must be a valid /32 CIDR, e.g. 203.0.113.42/32."
-  }
 }
 ```
 
@@ -444,11 +463,39 @@ variable "ssh_ingress_cidr" {
 | `description` | **Obrigatória** pelo Style Guide, em todas |
 | `type` | **Sempre explícito**: `string`, `number`, `bool`, `list(string)`, `map(string)` |
 | `default` | Ausente = variável obrigatória. Presente = resposta certa independente de quem executa |
-| `validation` | Falha **antes** do plan, com mensagem própria em vez de erro da API da AWS |
 
 O critério que decide se algo vira variável: **"isso muda de execução para
 execução?"** Se sim, variável. Se não, `local`. E se muda mas existe uma resposta
 correta universal, variável **com** default.
+
+**Onde estão as `validation`.** Nenhuma na raiz; as quatro do projeto vivem nos
+módulos, ao lado do recurso que sofre a consequência:
+
+| Arquivo | Variável | O que a regra protege |
+| --- | --- | --- |
+| `modules/network/variables.tf` | `vpc_cidr` | Prefixo `/24` ou maior, senão `cidrsubnet()` gera subnet inválida |
+| `modules/web-server/variables.tf` | `instance_type` | Só `t2.micro`/`t3.micro` (Free Tier) |
+| `modules/web-server/variables.tf` | `http_port` | Porta entre 1 e 65535 |
+| `modules/web-server/variables.tf` | `ssh_ingress_cidr` | CIDR válido e terminado em `/32` |
+
+A escolha é de responsabilidade: **quem conhece a restrição é quem sofre com
+ela.** O teto de `/24` só faz sentido perto do `cidrsubnet()` que o exige; a
+raiz apenas repassa o valor e não deveria saber por que ele existe. Duplicar a
+regra nos dois níveis criaria duas fontes de verdade que envelhecem separado.
+
+Na prática não há perda: a validação de variável de módulo é avaliada **no
+plan**, antes de qualquer chamada à API da AWS. O que muda é só o endereço que
+a mensagem de erro cita.
+
+```hcl
+# modules/web-server/variables.tf
+validation {
+  # cidrhost() de fato parseia o CIDR, então rejeita octetos impossíveis
+  # como 999.999.999.999, que um regex de formato deixaria passar.
+  condition     = can(cidrhost(var.ssh_ingress_cidr, 0)) && endswith(var.ssh_ingress_cidr, "/32")
+  error_message = "Must be a valid /32 CIDR, e.g. 203.0.113.42/32."
+}
+```
 
 > **Dica:** sem a `validation`, um CIDR errado só falha no meio do `apply`, com
 > uma mensagem da AWS que não diz qual variável causou o problema.
@@ -576,7 +623,7 @@ rodou e com que tipo de instância.
 
 ### Arquivo por arquivo: os módulos
 
-Um módulo é uma caixa preta. O root não enxerga os recursos lá dentro, só o que
+Um módulo é uma caixa preta. A raiz não enxerga os recursos lá dentro, só o que
 entra pelas `variable` e o que sai pelos `output`. Esse contrato é a parte que
 mais importa, porque define o que pode mudar sem quebrar quem chama.
 
@@ -593,7 +640,7 @@ flowchart LR
     end
 
     subgraph W["module.web_server"]
-        WI["vpc_id · subnet_id<br/>instance_type · http_port<br/>ssh_ingress_cidr · ...13 no total"]
+        WI["vpc_id · subnet_id<br/>instance_type · http_port<br/>ssh_ingress_cidr · ...17 entradas no total"]
         WO["instance_id · public_ip<br/>public_dns<br/>security_group_id"]
     end
 
@@ -647,7 +694,7 @@ O segundo termo existe por uma razão concreta. O `main.tf` deriva a subnet com
 mesmo um `/21` produziria uma subnet menor que o `/28` mínimo que a AWS aceita.
 Sem esse teto, o erro só apareceria no meio do `apply`, vindo da API da AWS.
 
-**Os cinco recursos e o data source** estão descritos na tabela da seção
+**Os seis recursos e o data source** estão descritos na tabela da seção
 [O que é provisionado](#o-que-é-provisionado). O que o código acrescenta são três
 linhas que não têm sintoma de erro, apenas silêncio:
 
@@ -668,19 +715,20 @@ e a subnet falharia ao ser criada.
 
 **Interface**
 
-Treze entradas, agrupadas por finalidade:
+Dezessete entradas, agrupadas por finalidade:
 
 | Grupo | Variáveis |
 | --- | --- |
 | Ligação com a rede | `vpc_id`, `subnet_id` |
-| Dimensionamento | `instance_type`, `name_prefix` |
+| Dimensionamento | `instance_type` (restrito a `t2.micro`/`t3.micro`), `name_prefix` |
 | Acesso | `http_port`, `ssh_ingress_cidr`, `key_name` |
 | Conteúdo da página | `student_name`, `class_name`, `course_name`, `professor_name`, `page_title`, `page_subtitle`, `stack_items`, `environment` |
 | Origem da imagem | `ami_parameter_name` |
+| Configuração adicional | `tags` |
 
 | Saída | Para que serve |
 | --- | --- |
-| `public_ip` | Vira `instance_public_ip` e `web_url` no root |
+| `public_ip` | Vira `instance_public_ip` e `web_url` na raiz |
 | `public_dns` | Vira `instance_public_dns`, exigido pelo enunciado |
 | `instance_id`, `security_group_id` | Para inspeção via CLI e `terraform state show` |
 
@@ -695,7 +743,7 @@ e é o que mantém o HTML fora do código Terraform:
 flowchart LR
     TPL["index.html.tftpl<br/>variáveis do template"]
     HTML["local.page_html<br/>HTML já resolvido"]
-    SH["user_data.sh.tftpl<br/>recebe page_html"]
+    SH["user_data.sh.tftpl<br/>recebe page_html + http_port"]
     UD["local.user_data<br/>script de boot completo"]
 
     TPL -->|"templatefile()"| HTML
@@ -707,6 +755,24 @@ flowchart LR
 O `${path.module}` nas duas chamadas resolve o caminho relativo ao módulo, não a
 quem o chama. Com um caminho relativo comum, mover o módulo quebraria a leitura
 dos templates.
+
+**`http_port` chega a duas superfícies, não uma.** Abrir a porta no Security
+Group não faz o `httpd` escutar nela: o pacote instala com um `Listen 80` fixo.
+Por isso o `user_data` reescreve a diretiva antes de subir o serviço:
+
+```bash
+sed -i "s/^Listen 80$/Listen ${http_port}/" /etc/httpd/conf/httpd.conf
+```
+
+A reescrita é no arquivo principal em vez de um drop-in em `conf.d/` por um
+motivo específico: **dois `Listen` na mesma porta fazem o `httpd` falhar ao
+subir** (`AH00072: could not bind to address`), e é justamente o que aconteceria
+no caso padrão, `http_port = 80`. Com `sed`, esse caso vira um no-op inofensivo.
+
+Se só o Security Group conhecesse a porta, `http_port = 8080` produziria um
+`apply` bem-sucedido, firewall liberando 8080, servidor respondendo em 80 e a
+página inalcançável — mais um item para a tabela de falhas silenciosas do módulo
+`network`, e o motivo de a variável ter que atravessar até o script de boot.
 
 **As regras do Security Group são três recursos separados**, não blocos `ingress`
 dentro do grupo. O motivo está em
@@ -764,7 +830,9 @@ O que aparece no `plan` é `tags` (o que está escrito no recurso) **e** `tags_a
 
 Isso explica uma armadilha de avaliação: as tags organizacionais **não aparecem
 escritas no código dos módulos**. Quem procurar por `grep Environment modules/`
-não acha nada. Por isso a evidência `tags-plan.txt` existe.
+não acha nada. Por isso existem as evidências
+`evidencia_08_dev_ec2_tags.png` e `evidencia_16_prod_ec2_tags.png`: elas
+comprovam as tags efetivamente aplicadas às instâncias.
 
 #### 3. Ordem de criação: o grafo, não o arquivo
 
@@ -811,7 +879,7 @@ Duas leituras que esse desenho torna óbvias:
 - **`aws_route` não é pré-requisito da association.** Ela depende de
   `aws_route_table` e de `aws_subnet`. A rota e a associação são ramos
   **paralelos**, criados ao mesmo tempo. Quem assume uma cadeia linear
-  `route_table → route → association` desenha errado.
+  `route_table → route → association` representa incorretamente o grafo.
 - **A seta `aws_vpc → aws_security_group` cruza a fronteira dos módulos.** Ela só
   existe porque `main.tf` passa `module.network.vpc_id` para o `web_server`. Essa
   linha ordena os dois módulos.
@@ -860,8 +928,9 @@ por workspace e são definidos em [`locals.tf`](locals.tf).
 
 > [!WARNING]
 > `terraform.tfvars` **não é versionado**, porque guarda identificação pessoal e o
-> IP público de quem executa. A fronteira entre `variables.tf` e `terraform.tfvars` não é
-> "público vs. privado", é **"descreve o projeto" vs. "descreve a execução"**.
+> IP público de quem executa. A fronteira entre `variables.tf` e
+> `terraform.tfvars` não é "público vs. privado", é **"descreve o projeto"** vs.
+> **"descreve a execução"**.
 
 ---
 
@@ -923,9 +992,10 @@ terraform apply
 
 > [!IMPORTANT]
 > **O workspace `default` está bloqueado.** Ele não é um ambiente, e sim o
-> workspace que o Terraform cria sozinho. Um `terraform_data` com `precondition` recusa o
-> `plan`/`apply` ali com uma mensagem explícita, sem quebrar o `terraform validate`,
-> que continua limpo. Aplicar no `default` criaria uma terceira VPC indesejada.
+> workspace que o Terraform cria sozinho. Um `terraform_data` com `precondition`
+> recusa o `plan`/`apply` ali com uma mensagem explícita, sem quebrar o
+> `terraform validate`, que continua limpo. Aplicar no `default` criaria uma
+> terceira VPC indesejada.
 
 O `user_data` leva **de 60 a 90 segundos após o `Apply complete!`** para instalar
 e subir o `httpd`. `Connection refused` logo de cara é esperado.
@@ -952,13 +1022,15 @@ terraform state show 'module.web_server.aws_instance.this' | grep -A6 tags_all
 curl -s $(terraform output -raw web_url) | grep -E '<h1>|Aluno|Ambiente'
 ```
 
-O `aws s3 ls` deve mostrar dois caminhos distintos:
+O `aws s3 ls` deve mostrar um caminho por workspace aplicado:
 
 ```
-atividade1/terraform.tfstate              ← workspace default
 env:/dev/atividade1/terraform.tfstate     ← workspace dev
 env:/prod/atividade1/terraform.tfstate    ← workspace prod
 ```
+
+O caminho `atividade1/terraform.tfstate`, do workspace `default`, não aparece: o
+guard impede o `apply` ali, então esse state nunca chega a ser criado.
 
 Com `key_name` configurado, dá para entrar na instância:
 
@@ -1003,6 +1075,16 @@ guarda o histórico do state.
 Todas na pasta [`evidencias/`](evidencias/), numeradas na ordem em que foram
 geradas. Os `.md` guardam a saída completa do terminal; os `.png` mostram o
 console da AWS e o navegador.
+
+> [!NOTE]
+> **Dois valores foram redigidos nos `.md`**, pela mesma razão que mantém
+> `terraform.tfvars` fora do Git: o IP residencial de quem executou aparece como
+> `203.0.113.42/32` (bloco reservado pela [RFC 5737][rfc5737] para documentação)
+> e o ID da conta AWS como `123456789012`. Nada além disso foi alterado — as
+> substituições preservam integralmente o que a evidência precisa provar, que é
+> a porta 22 restrita a um único `/32` em vez de aberta.
+
+[rfc5737]: https://datatracker.ietf.org/doc/html/rfc5737
 
 **Preparação**
 
@@ -1109,12 +1191,12 @@ console é a prova de que elas chegam a todos os recursos.
 ## Decisões de arquitetura
 
 **Dois módulos, não um.** `network` e `web-server` têm ciclos de vida e razões de
-mudança diferentes. A dependência entre eles é **implícita**. O root referencia
+mudança diferentes. A dependência entre eles é **implícita**. A raiz referencia
 `module.network.vpc_id`, e o Terraform infere a ordem a partir da referência. Não há
 `depends_on` no projeto; precisar dele costuma indicar que faltou uma referência real.
 
 **CIDRs distintos por ambiente** (`10.10` em dev, `10.20` em prod). Não é exigido,
-mas é a resposta certa: dois ambientes reais nunca compartilham bloco de endereços,
+mas é uma escolha adequada: dois ambientes reais nunca compartilham bloco de endereços,
 porque um dia precisarão se enxergar (peering, Transit Gateway) e CIDRs sobrepostos
 tornam isso impossível.
 
@@ -1124,7 +1206,8 @@ tornam isso impossível.
 Terraform recriar **todas**. As regras separadas também aceitam tags próprias.
 
 **`name_prefix` + `create_before_destroy` no Security Group.** Nome de SG é único
-por VPC; com nome fixo, substituir o grupo falha porque o antigo ainda o detém.
+por VPC; com nome fixo, substituir o grupo falha porque o grupo antigo ainda
+detém o nome.
 
 **`default_tags` no provider** em vez de repetir tags em cada recurso. É o mecanismo
 oficial da AWS para tagging organizacional, e alcança inclusive recursos criados
@@ -1148,8 +1231,8 @@ Learner Lab e fica apenas no `terraform.tfvars` local. Assim o código permanece
 executável em qualquer conta AWS: sem esse arquivo, a instância sobe sem par de
 chaves em vez de falhar com `InvalidKeyPair.NotFound`.
 
-**Sem subnet privada e sem HTTPS.** A carga é um servidor web que precisa ser
-alcançável da internet. Ele *pertence* à subnet pública. Uma subnet privada exigiria
+**Sem subnet privada e sem HTTPS.** O que roda aqui é um servidor web que precisa
+ser alcançável da internet. Ele *pertence* à subnet pública. Uma subnet privada exigiria
 NAT Gateway (custo relevante) sem ganho de segurança neste cenário. E certificados TLS
 são emitidos para nomes de domínio, não para IPs; como a atividade exige acesso pelo
 IP público, um certificado autoassinado só produziria aviso de segurança no navegador.
@@ -1180,8 +1263,9 @@ da letra do enunciado. Ambos preservam o requisito de fundo.
 projeto usa `Name`, `Environment`, `Project`, `Owner` e `ManagedBy`, seguindo a
 convenção de tagging da AWS, com mapeamento direto: `Curso` → `Project`,
 `Ambiente` → `Environment`. O requisito de fundo, rastreabilidade consistente de
-ambiente e projeto em todos os recursos, está atendido; a evidência em
-`evidencias/tags-plan.txt` comprova as tags efetivamente aplicadas.
+ambiente e projeto em todos os recursos, está atendido. As evidências
+`evidencia_08_dev_ec2_tags.png` e `evidencia_16_prod_ec2_tags.png` comprovam as
+tags efetivamente aplicadas às instâncias.
 
 **2. AMI via SSM Parameter Store.** O enunciado pede `data "aws_ami"`. O projeto usa
 `data "aws_ssm_parameter"` no path público mantido pela AWS
