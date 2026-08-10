@@ -19,6 +19,10 @@ locals {
 
   user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
     page_html = local.page_html
+
+    # The boot script needs the port too, not just the security group: the
+    # firewall and the listening socket are two surfaces that have to agree.
+    http_port = var.http_port
   })
 }
 

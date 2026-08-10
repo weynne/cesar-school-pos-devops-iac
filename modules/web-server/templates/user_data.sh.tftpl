@@ -5,6 +5,15 @@ set -euxo pipefail
 
 # Order matters: /var/www/html is created by the httpd package.
 dnf install -y httpd
+
+# The package ships a hardcoded "Listen 80". It is rewritten in place rather
+# than supplemented by a conf.d drop-in: a second Listen on the same port
+# makes httpd fail to bind, so a drop-in would break the http_port = 80 case,
+# which is the default. Without this line the security group would open
+# http_port while httpd kept answering on 80 -- an apply that succeeds and a
+# page that never responds.
+sed -i "s/^Listen 80$/Listen ${http_port}/" /etc/httpd/conf/httpd.conf
+
 systemctl enable --now httpd
 
 # Quoted delimiter: bash performs no expansion. Terraform already rendered
