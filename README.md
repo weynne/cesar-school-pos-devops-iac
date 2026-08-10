@@ -14,7 +14,9 @@ ambientes.
 
 ## Sumário
 
-- [O que é provisionado](#o-que-é-provisionado)
+- [O que será provisionado](#o-que-será-provisionado)
+- [Início rápido](#início-rápido)
+- [Evidências da entrega](#evidências-da-entrega)
 - [Como o Terraform funciona](#como-o-terraform-funciona)
 - [Pré-requisitos](#pré-requisitos)
 - [Preparando o backend remoto](#preparando-o-backend-remoto)
@@ -24,7 +26,6 @@ ambientes.
 - [Como executar](#como-executar)
 - [Verificação](#verificação)
 - [Limpeza dos recursos](#limpeza-dos-recursos)
-- [Evidências da entrega](#evidências-da-entrega)
 - [Troubleshooting](#troubleshooting)
 - [Decisões de arquitetura](#decisões-de-arquitetura)
 - [Divergências em relação ao enunciado](#divergências-em-relação-ao-enunciado)
@@ -32,7 +33,7 @@ ambientes.
 
 ---
 
-## O que é provisionado
+## O que será provisionado
 
 Uma VPC própria com uma subnet pública, saída para a internet e uma instância EC2
 servindo uma página HTML via `httpd`. São **12 recursos gerenciados pelo Terraform**
@@ -88,6 +89,198 @@ flowchart LR
 [vpc-docs]: https://docs.aws.amazon.com/vpc/latest/userguide/configure-subnets.html
 [rt-docs]: https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Route_Tables.html
 [sg-docs]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html
+
+---
+
+## Início rápido
+
+O caminho mais curto do clone até a página no ar, com todos os valores já
+preenchidos. Aqui só os comandos; o "porquê" de cada um está nas seções
+seguintes.
+
+**Pré-requisitos:** [Terraform ≥ 1.10](https://developer.hashicorp.com/terraform/install),
+[AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+e credenciais AWS válidas. No **AWS Academy Learner Lab**, o bloco em
+*AWS Details → AWS CLI* traz **três** chaves, incluindo o `aws_session_token`.
+
+### 1. Conferir ferramentas e acesso
+
+```bash
+terraform version                    # precisa ser >= 1.10
+aws configure set region us-east-1
+aws sts get-caller-identity          # se falhar aqui, nada abaixo funciona
+```
+
+### 2. Criar o seu bucket de state
+
+O [`backend.tf`](backend.tf) aponta para o bucket desta entrega, que **não é
+acessível de fora**. Você precisa do seu. Nomes de bucket são únicos na AWS
+inteira, então troque `SEU-NOME` por algo só seu:
+
+```bash
+export BUCKET=tfstate-pos-devops-iac-SEU-NOME   # ex.: tfstate-pos-devops-iac-ana-2026
+
+# 1) Criar o bucket (us-east-1 é a única região que NÃO aceita
+#    --create-bucket-configuration):
+aws s3api create-bucket --bucket "$BUCKET" --region us-east-1
+
+# 2) Versionamento: permite recuperar um state corrompido:
+aws s3api put-bucket-versioning --bucket "$BUCKET" \
+  --versioning-configuration Status=Enabled
+
+# 3) O state guarda dados sensíveis em texto plano; bloqueie acesso público:
+aws s3api put-public-access-block --bucket "$BUCKET" \
+  --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+# 4) E cifre em repouso:
+aws s3api put-bucket-encryption --bucket "$BUCKET" \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+```
+
+### 3. Preencher o `terraform.tfvars`
+
+Só **duas** variáveis são obrigatórias. Troque o `OWNER` na primeira linha e cole
+o bloco inteiro: ele resolve o seu IP público na hora e escreve o arquivo pronto.
+
+```bash
+export OWNER="Seu Nome"
+
+cat > terraform.tfvars <<EOF
+owner            = "$OWNER"
+ssh_ingress_cidr = "$(curl -s https://checkip.amazonaws.com)/32"
+key_name         = "vockey"
+EOF
+```
+
+O arquivo gerado fica assim, e é exatamente o que o Terraform espera:
+
+```hcl
+owner            = "Seu Nome"          # vai para a tag Owner de todos os recursos
+ssh_ingress_cidr = "203.0.113.42/32"   # seu IP público, o único liberado na porta 22
+key_name         = "vockey"            # par de chaves para SSH
+```
+
+| Variável | Obrigatória | O que colocar |
+| --- | :---: | --- |
+| `owner` | ✅ | Seu nome, em texto livre |
+| `ssh_ingress_cidr` | ✅ | Seu IP público em `/32`. Ele muda quando o roteador reconecta, então reconfira antes de cada `apply` |
+| `key_name` | - | Nome de um par de chaves EC2 **que já exista na conta**. `vockey` é o do Learner Lab; fora dele, use o seu ou apague a linha |
+
+Todo o resto tem default em [`variables.tf`](variables.tf) e pode ficar de fora
+do arquivo: região, nome do projeto, porta HTTP e os dados exibidos na página.
+
+> [!TIP]
+> Prefere entender cada campo antes de preencher? Use
+> `cp terraform.tfvars.example terraform.tfvars` e edite à mão: o
+> [`terraform.tfvars.example`](terraform.tfvars.example) traz todas as variáveis
+> comentadas, inclusive as opcionais.
+
+### 4. Aplicar em `dev`
+
+```bash
+terraform init -backend-config="bucket=$BUCKET"
+terraform workspace select -or-create dev
+terraform apply                      # espere: Plan: 12 to add
+```
+
+### 5. Abrir a página
+
+```bash
+terraform output web_url
+```
+
+O `httpd` leva de **60 a 90 segundos** para subir depois do `Apply complete!`.
+`Connection refused` nos primeiros segundos é esperado, não é erro.
+
+### 6. Repetir em `prod` e destruir os dois
+
+```bash
+terraform workspace select -or-create prod
+terraform apply
+
+terraform workspace select prod && terraform destroy
+terraform workspace select dev  && terraform destroy
+```
+
+O bucket do backend não é destruído: ele pertence a outro ciclo de vida e guarda
+o histórico do state. Apague manualmente se não for mais usá-lo.
+
+> [!TIP]
+> Deu erro? O [Troubleshooting](#troubleshooting) cobre os casos mais comuns,
+> incluindo o `403 Forbidden` logo após um `init` limpo e o `explicit deny` de
+> sessão expirada do Learner Lab.
+
+---
+
+## Evidências da entrega
+
+Todas na pasta [`evidencias/`](evidencias/), numeradas na ordem em que foram
+geradas. Os `.md` guardam a saída completa do terminal; os `.png` mostram o
+console da AWS e o navegador.
+
+> [!NOTE]
+> **Dois valores foram redigidos nos `.md`**, pela mesma razão que mantém
+> `terraform.tfvars` fora do Git: o IP residencial de quem executou aparece como
+> `203.0.113.42/32` (bloco reservado pela [RFC 5737][rfc5737] para documentação)
+> e o ID da conta AWS como `123456789012`. Nada além disso foi alterado — as
+> substituições preservam integralmente o que a evidência precisa provar, que é
+> a porta 22 restrita a um único `/32` em vez de aberta.
+
+[rfc5737]: https://datatracker.ietf.org/doc/html/rfc5737
+
+**Preparação**
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `evidencia_01_init_fmt_validate_workspace.png` | `init`, `fmt`, `validate` e seleção de workspace |
+
+**Ambiente `dev`** (`t2.micro`, `10.10.0.0/16`)
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `evidencia_02_dev_apply.md` | Saída completa do `apply`, com `Apply complete! Resources: 12 added` |
+| `evidencia_03_dev_apply.png` | O mesmo `apply` no terminal |
+| `evidencia_04_dev_webpage_ip.png` | Página servida pelo IP público |
+| `evidencia_05_dev_webpage_dns.png` | Mesma página pelo DNS público |
+| `evidencia_06_dev_ec2_sg.png` | Security Group: porta 22 restrita a um `/32`, porta 80 aberta |
+| `evidencia_07_dev_ec2_vpc.png` | VPC, subnet, route table e Internet Gateway no console |
+| `evidencia_08_dev_ec2_tags.png` | Tags efetivamente aplicadas na instância |
+| `evidencia_09_dev_ec2_ssh.png` | Acesso SSH à instância |
+
+**Ambiente `prod`** (`t3.micro`, `10.20.0.0/16`)
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `evidencia_10_prod_apply.md` | Saída completa do `apply`, com `Apply complete! Resources: 12 added` |
+| `evidencia_11_prod_apply.png` | O mesmo `apply` no terminal |
+| `evidencia_12_prod_webpage_ip.png` | Página servida pelo IP público |
+| `evidencia_13_prod_webpage_dns.png` | Mesma página pelo DNS público |
+| `evidencia_14_prod_ec2_sg.png` | Security Group do ambiente de produção |
+| `evidencia_15_prod_ec2_vpc.png` | Rede do ambiente de produção no console |
+| `evidencia_16_prod_ec2_tags.png` | Tags efetivamente aplicadas na instância |
+| `evidencia_17_prod_ec2_ssh.png` | Acesso SSH à instância |
+
+**State remoto e limpeza**
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `evidencia_18_bucket_s3.png` | Bucket do backend com os states separados por workspace |
+| `evidencia_19_bucket_s3.png` | Detalhe do caminho `env:/` que isola `dev` de `prod` |
+| `evidencia_20_prod_destroy.md` | `Destroy complete! Resources: 12 destroyed` em `prod` |
+| `evidencia_21_prod_destroy.png` | O mesmo `destroy` no terminal |
+| `evidencia_22_dev_destroy.md` | `Destroy complete! Resources: 12 destroyed` em `dev` |
+| `evidencia_23_dev_destroy.png` | O mesmo `destroy` no terminal |
+
+Cada saída de `apply` inclui os outputs `workspace` e `instance_type`, o que torna
+a evidência autoidentificável. Comparando `evidencia_02_dev_apply.md` com
+`evidencia_10_prod_apply.md` fica visível o que muda entre os ambientes:
+`t2.micro` contra `t3.micro`.
+
+As capturas de tags existem por um motivo específico. As tags organizacionais vêm
+do `default_tags` no provider, então **não aparecem escritas no código dos
+módulos**. Quem procurar por `grep Environment modules/` não acha nada, e o
+console é a prova de que elas chegam a todos os recursos.
 
 ---
 
@@ -155,7 +348,7 @@ Ferramentas que precisam estar instaladas na máquina:
 Credenciais AWS configuradas em `~/.aws/credentials`. Se estiver usando o
 **AWS Academy Learner Lab**, o bloco vem em *AWS Details → AWS CLI* e traz
 **três** chaves: `aws_access_key_id`, `aws_secret_access_key` e
-`aws_session_token`. O último é o mais esquecido.
+`aws_session_token`.
 
 Defina também a região padrão, senão comandos `aws` sem `--region` falham com
 `NoRegion`:
@@ -259,8 +452,8 @@ que sejam violadas:
 ## Anatomia dos arquivos `.tf`
 
 A seção anterior mostra **onde** cada arquivo fica. Esta mostra **o que cada bloco
-faz** e como escrevê-lo. Fechamos com o ponto que mais confunde quem vem de shell
-script: **em que ordem o Terraform realmente avalia as coisas**.
+faz** e como escrevê-lo. Fechamos com o ponto que mais confunde: **em que ordem
+o Terraform realmente avalia as coisas**.
 
 ### A ordem dos arquivos não existe
 
@@ -621,7 +814,7 @@ rodou e com que tipo de instância.
 
 </details>
 
-### Arquivo por arquivo: os módulos
+### O contrato de um módulo
 
 Um módulo é uma caixa preta. A raiz não enxerga os recursos lá dentro, só o que
 entra pelas `variable` e o que sai pelos `output`. Esse contrato é a parte que
@@ -665,6 +858,8 @@ Os quatro arquivos se repetem nos dois módulos, com papéis fixos:
 Nenhum deles tem bloco `provider` nem `backend`, pelas razões da seção
 [Estrutura do repositório](#estrutura-do-repositório).
 
+### Arquivo por arquivo: os módulos
+
 <details>
 <summary><b>8. <code>modules/network/</code></b>: VPC, subnet e saída para a internet</summary>
 
@@ -695,7 +890,7 @@ mesmo um `/21` produziria uma subnet menor que o `/28` mínimo que a AWS aceita.
 Sem esse teto, o erro só apareceria no meio do `apply`, vindo da API da AWS.
 
 **Os seis recursos e o data source** estão descritos na tabela da seção
-[O que é provisionado](#o-que-é-provisionado). O que o código acrescenta são três
+[O que será provisionado](#o-que-será-provisionado). O que o código acrescenta são três
 linhas que não têm sintoma de erro, apenas silêncio:
 
 | Linha | O que acontece se faltar |
@@ -1067,77 +1262,6 @@ aws ec2 describe-instances --region us-east-1 \
 
 O bucket do backend **não** é destruído, porque pertence a outro ciclo de vida e
 guarda o histórico do state.
-
----
-
-## Evidências da entrega
-
-Todas na pasta [`evidencias/`](evidencias/), numeradas na ordem em que foram
-geradas. Os `.md` guardam a saída completa do terminal; os `.png` mostram o
-console da AWS e o navegador.
-
-> [!NOTE]
-> **Dois valores foram redigidos nos `.md`**, pela mesma razão que mantém
-> `terraform.tfvars` fora do Git: o IP residencial de quem executou aparece como
-> `203.0.113.42/32` (bloco reservado pela [RFC 5737][rfc5737] para documentação)
-> e o ID da conta AWS como `123456789012`. Nada além disso foi alterado — as
-> substituições preservam integralmente o que a evidência precisa provar, que é
-> a porta 22 restrita a um único `/32` em vez de aberta.
-
-[rfc5737]: https://datatracker.ietf.org/doc/html/rfc5737
-
-**Preparação**
-
-| Arquivo | Conteúdo |
-| --- | --- |
-| `evidencia_01_init_fmt_validate_workspace.png` | `init`, `fmt`, `validate` e seleção de workspace |
-
-**Ambiente `dev`** (`t2.micro`, `10.10.0.0/16`)
-
-| Arquivo | Conteúdo |
-| --- | --- |
-| `evidencia_02_dev_apply.md` | Saída completa do `apply`, com `Apply complete! Resources: 12 added` |
-| `evidencia_03_dev_apply.png` | O mesmo `apply` no terminal |
-| `evidencia_04_dev_webpage_ip.png` | Página servida pelo IP público |
-| `evidencia_05_dev_webpage_dns.png` | Mesma página pelo DNS público |
-| `evidencia_06_dev_ec2_sg.png` | Security Group: porta 22 restrita a um `/32`, porta 80 aberta |
-| `evidencia_07_dev_ec2_vpc.png` | VPC, subnet, route table e Internet Gateway no console |
-| `evidencia_08_dev_ec2_tags.png` | Tags efetivamente aplicadas na instância |
-| `evidencia_09_dev_ec2_ssh.png` | Acesso SSH à instância |
-
-**Ambiente `prod`** (`t3.micro`, `10.20.0.0/16`)
-
-| Arquivo | Conteúdo |
-| --- | --- |
-| `evidencia_10_prod_apply.md` | Saída completa do `apply`, com `Apply complete! Resources: 12 added` |
-| `evidencia_11_prod_apply.png` | O mesmo `apply` no terminal |
-| `evidencia_12_prod_webpage_ip.png` | Página servida pelo IP público |
-| `evidencia_13_prod_webpage_dns.png` | Mesma página pelo DNS público |
-| `evidencia_14_prod_ec2_sg.png` | Security Group do ambiente de produção |
-| `evidencia_15_prod_ec2_vpc.png` | Rede do ambiente de produção no console |
-| `evidencia_16_prod_ec2_tags.png` | Tags efetivamente aplicadas na instância |
-| `evidencia_17_prod_ec2_ssh.png` | Acesso SSH à instância |
-
-**State remoto e limpeza**
-
-| Arquivo | Conteúdo |
-| --- | --- |
-| `evidencia_18_bucket_s3.png` | Bucket do backend com os states separados por workspace |
-| `evidencia_19_bucket_s3.png` | Detalhe do caminho `env:/` que isola `dev` de `prod` |
-| `evidencia_20_prod_destroy.md` | `Destroy complete! Resources: 12 destroyed` em `prod` |
-| `evidencia_21_prod_destroy.png` | O mesmo `destroy` no terminal |
-| `evidencia_22_dev_destroy.md` | `Destroy complete! Resources: 12 destroyed` em `dev` |
-| `evidencia_23_dev_destroy.png` | O mesmo `destroy` no terminal |
-
-Cada saída de `apply` inclui os outputs `workspace` e `instance_type`, o que torna
-a evidência autoidentificável. Comparando `evidencia_02_dev_apply.md` com
-`evidencia_10_prod_apply.md` fica visível o que muda entre os ambientes:
-`t2.micro` contra `t3.micro`.
-
-As capturas de tags existem por um motivo específico. As tags organizacionais vêm
-do `default_tags` no provider, então **não aparecem escritas no código dos
-módulos**. Quem procurar por `grep Environment modules/` não acha nada, e o
-console é a prova de que elas chegam a todos os recursos.
 
 ---
 
