@@ -109,11 +109,13 @@ e credenciais AWS válidas. No **AWS Academy Learner Lab**, o bloco em
 terraform version                    # precisa ser >= 1.10
 aws configure set region us-east-1
 aws sts get-caller-identity          # se falhar aqui, nada abaixo funciona
+
+cd atividade-1                       # todos os comandos a seguir rodam aqui
 ```
 
 ### 2. Criar o seu bucket de state
 
-O [`backend.tf`](backend.tf) aponta para o bucket desta entrega, que **não é
+O [`backend.tf`](atividade-1/backend.tf) aponta para o bucket desta entrega, que **não é
 acessível de fora**. Você precisa do seu. Nomes de bucket são únicos na AWS
 inteira, então troque `SEU-NOME` por algo só seu:
 
@@ -167,13 +169,13 @@ key_name         = "vockey"            # par de chaves para SSH
 | `ssh_ingress_cidr` | ✅ | Seu IP público em `/32`. Ele muda quando o roteador reconecta, então reconfira antes de cada `apply` |
 | `key_name` | - | Nome de um par de chaves EC2 **que já exista na conta**. `vockey` é o do Learner Lab; fora dele, use o seu ou apague a linha |
 
-Todo o resto tem default em [`variables.tf`](variables.tf) e pode ficar de fora
+Todo o resto tem default em [`variables.tf`](atividade-1/variables.tf) e pode ficar de fora
 do arquivo: região, nome do projeto, porta HTTP e os dados exibidos na página.
 
 > [!TIP]
 > Prefere entender cada campo antes de preencher? Use
 > `cp terraform.tfvars.example terraform.tfvars` e edite à mão: o
-> [`terraform.tfvars.example`](terraform.tfvars.example) traz todas as variáveis
+> [`terraform.tfvars.example`](atividade-1/terraform.tfvars.example) traz todas as variáveis
 > comentadas, inclusive as opcionais.
 
 ### 4. Aplicar em `dev`
@@ -215,7 +217,7 @@ o histórico do state. Apague manualmente se não for mais usá-lo.
 
 ## Evidências da entrega
 
-Todas na pasta [`evidencias/`](evidencias/), numeradas na ordem em que foram
+Todas na pasta [`evidencias/`](atividade-1/evidencias/), numeradas na ordem em que foram
 geradas. Os `.md` guardam a saída completa do terminal; os `.png` mostram o
 console da AWS e o navegador.
 
@@ -400,7 +402,7 @@ aws s3api put-bucket-encryption --bucket "$BUCKET" \
   '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
 ```
 
-Depois, ajuste o `bucket` em [`backend.tf`](backend.tf).
+Depois, ajuste o `bucket` em [`backend.tf`](atividade-1/backend.tf).
 
 > [!NOTE]
 > O bloco `backend` **não aceita variáveis nem interpolação**, só literais.
@@ -1119,7 +1121,7 @@ echo $(curl -s https://checkip.amazonaws.com)/32
 ```
 
 `instance_type` e `vpc_cidr` **não são configuráveis** por variável: eles variam
-por workspace e são definidos em [`locals.tf`](locals.tf).
+por workspace e são definidos em [`locals.tf`](atividade-1/locals.tf).
 
 > [!WARNING]
 > `terraform.tfvars` **não é versionado**, porque guarda identificação pessoal e o
@@ -1285,7 +1287,7 @@ guarda o histórico do state.
 
 - 🟡 **Output `instance_public_dns` vazio:**
   - **Causa:** `enable_dns_hostnames` é `false` por padrão em VPC customizada.
-  - **Solução:** está habilitado em [`modules/network/main.tf`](modules/network/main.tf).
+  - **Solução:** está habilitado em [`modules/network/main.tf`](atividade-1/modules/network/main.tf).
     Se um dia sumir, o sintoma é este, sem nenhuma mensagem de erro.
 
 - 🟡 **`Module not installed`:**
