@@ -46,3 +46,8 @@ terraform.rc
 # Private keys -- never commit
 *.pem
 *.key
+
+# Ansible: the vault password never goes in, the encrypted vault file does
+.vault_pass
+vault_pass.txt
+*.retry
