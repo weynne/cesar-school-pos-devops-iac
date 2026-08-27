@@ -408,8 +408,18 @@ PLAY RECAP ***********************************************************
 ```bash
 cd ../terraform
 curl -si "$(terraform output -raw app_url)" | head -5
-terraform output -raw app_url        # abrir no navegador
-terraform output -raw app_url_dns    # o mesmo, pelo DNS público
+
+# O echo acrescenta a quebra de linha que o -raw omite, deixando a URL
+# clicável no terminal. Sem ele o zsh imprime um "%" no fim, que o
+# detector de links captura junto e invalida o endereço.
+echo "$(terraform output -raw app_url)"        # pelo IP
+echo "$(terraform output -raw app_url_dns)"    # pelo DNS público
+```
+
+Para abrir direto do WSL, sem clicar:
+
+```bash
+explorer.exe "$(terraform output -raw app_url)"
 ```
 
 Ambas as URLs carregam a porta explicitamente. O Security Group abre apenas
