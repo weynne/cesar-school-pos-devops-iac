@@ -1,19 +1,26 @@
-# What the project exposes after an apply: the address to reach the page and
-# the context that makes each run's log self-identifying.
+# What the project exposes after an apply: the address to reach the
+# application and the context that makes each run's log self-identifying.
 
 output "instance_public_ip" {
-  description = "Public IP address of the web server instance"
-  value       = module.web_server.public_ip
+  description = "Public IP address of the docker host instance"
+  value       = module.docker_host.public_ip
 }
 
 output "instance_public_dns" {
-  description = "Public DNS name of the web server instance"
-  value       = module.web_server.public_dns
+  description = "Public DNS name of the docker host instance"
+  value       = module.docker_host.public_dns
 }
 
-output "web_url" {
-  description = "URL to open in a browser to reach the published page"
-  value       = "http://${module.web_server.public_ip}"
+output "app_url" {
+  description = "URL to open in a browser to reach the container published by Ansible"
+  value       = "http://${module.docker_host.public_ip}:${var.app_port}"
+}
+
+# Derived from public_key_path so the command cannot drift from the key the
+# instance actually accepts.
+output "ssh_command" {
+  description = "Ready-to-paste SSH command for the docker host"
+  value       = "ssh -i ${trimsuffix(var.public_key_path, ".pub")} ec2-user@${module.docker_host.public_ip}"
 }
 
 # The two outputs below make every apply/destroy log self-identifying: the
