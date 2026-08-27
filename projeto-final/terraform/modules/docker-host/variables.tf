@@ -1,5 +1,5 @@
 variable "name_prefix" {
-  description = "The prefix for resource names"
+  description = "Prefix applied to the name of every resource created by this module"
   type        = string
 }
 
@@ -48,7 +48,7 @@ variable "ssh_ingress_cidr" {
 }
 
 variable "key_name" {
-  description = "EC2 key pair name for SSH access"
+  description = "Name of the EC2 key pair whose private half Ansible uses to reach the instance. Required: without it the host is provisioned and unreachable"
   type        = string
 }
 
