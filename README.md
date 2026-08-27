@@ -153,11 +153,12 @@ descobre a infraestrutura consultando a API da EC2 através do plugin
 `amazon.aws.aws_ec2`, e o `ansible-playbook` é executado como um passo
 próprio, depois do `terraform apply`.
 
-Com as duas etapas independentes, reexecutar a configuração é uma operação de
-primeira classe: basta rodar o playbook de novo, sem tocar no Terraform e sem
-forçar a recriação de recurso nenhum. A segunda execução — a que comprova
-`changed=0` — passa a ser um passo natural do fluxo, e não algo que precisa ser
-provocado.
+Com as duas etapas independentes, reexecutar só a configuração é um comando:
+você roda o playbook de novo, e o Terraform nem fica sabendo. Nenhum recurso
+precisa ser recriado para o Ansible rodar outra vez.
+
+É isso que torna a segunda execução — a que comprova `changed=0` — apenas
+repetir um comando.
 
 ### O que dispara o quê, em que ordem
 
@@ -773,9 +774,9 @@ segue a língua da disciplina.
 **Acesso por SSH com chave, não por Session Manager.** Fora de um laboratório,
 a resposta madura seria o AWS Systems Manager Session Manager: shell na
 instância sem abrir a porta 22, sem chave SSH para gerenciar e com auditoria no
-CloudTrail. Ele exige um *instance profile* IAM anexado à instância, e o
-Learner Lab não permite criar roles IAM — daí o SSH com chave, mitigado pelo
-Security Group que restringe a porta 22 a um único `/32`.
+CloudTrail. O Session Manager exige um *instance profile* IAM anexado à
+instância, e o Learner Lab não permite criar roles IAM. Por isso esta entrega
+usa SSH com chave, e restringe a porta 22 a um único `/32` no Security Group.
 
 **`host_key_checking = False`.** O IP público muda a cada `apply`/`destroy`, e
 a verificação de host key geraria prompt interativo a cada execução. É um
@@ -1390,10 +1391,13 @@ collections:
 Declara o que o projeto precisa para rodar em outra máquina. É o equivalente ao
 `required_providers` do Terraform, com uma diferença importante: o Ansible
 **não tem** arquivo de lock. Sem a restrição de versão, um clone novo instala o
-que estiver publicado no dia — e a `community.docker` já removeu a dependência
-do `docker-py` numa major, e hoje empurra o `docker_image` na direção dos
-módulos separados. As faixas acima aceitam correções dentro da major testada e
-barram a próxima.
+que estiver publicado no dia.
+
+E isso não é risco teórico. A `community.docker` já removeu o SDK `docker-py`
+numa virada de major, e a documentação atual dela recomenda trocar o
+`docker_image` pelos módulos separados — ou seja, uma major nova pode retirar
+exatamente o que a role `app` chama. As faixas acima aceitam correções dentro
+da major testada e barram a próxima.
 
 </details>
 
