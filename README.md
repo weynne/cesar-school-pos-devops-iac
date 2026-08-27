@@ -146,9 +146,11 @@ descobre a infraestrutura consultando a API da EC2 através do plugin
 `amazon.aws.aws_ec2`, e o `ansible-playbook` é executado como um passo
 próprio, depois do `terraform apply`.
 
-Com as duas etapas independentes, a configuração pode ser reaplicada quantas
-vezes for necessário sem tocar na infraestrutura — que é o que torna possível
-executar o playbook duas vezes seguidas e comprovar `changed=0`.
+Com as duas etapas independentes, reexecutar a configuração é uma operação de
+primeira classe: basta rodar o playbook de novo, sem tocar no Terraform e sem
+forçar a recriação de recurso nenhum. A segunda execução — a que comprova
+`changed=0` — passa a ser um passo natural do fluxo, e não algo que precisa ser
+provocado.
 
 ### O que dispara o quê, em que ordem
 
@@ -211,7 +213,15 @@ passo obrigatório do roteiro de execução, e não um comando de depuração.
 | --- | --- | --- |
 | `remote-exec` | Dentro do servidor | Configuraria a instância no lugar do Ansible. Proibido pelo enunciado |
 | `local-exec` | Na máquina do operador | Alternativa aceita pelo enunciado (Opção B). Roda como parte do `terraform apply`: a configuração deixa de ser um passo que se repete sozinho, e uma falha do Ansible marca o recurso do Terraform como problemático |
-| **inventário dinâmico** | Etapas separadas | **Adotado nesta entrega.** O Ansible roda quantas vezes for preciso sem tocar na infraestrutura — que é o que torna a prova de idempotência possível |
+| **inventário dinâmico** | Etapas separadas | **Adotado nesta entrega.** Cada ferramenta roda por conta própria: reexecutar a configuração não exige tocar na infraestrutura, e uma falha do Ansible não marca recurso nenhum do Terraform |
+
+> [!NOTE]
+> **Idempotência não é privilégio da Opção A.** O Terraform é idempotente por
+> construção, e o enunciado cobra `changed=0` do Ansible em qualquer uma das
+> duas opções. A diferença está no custo de chegar lá: na Opção B, um segundo
+> `terraform apply` não reexecuta o playbook — o `null_resource` não mudou,
+> então o provisioner não dispara — e provar o `changed=0` do Ansible exigiria
+> rodar o playbook à parte assim mesmo, ou forçar a recriação do recurso.
 
 Não há **nenhum** bloco `provisioner` no código desta entrega:
 
