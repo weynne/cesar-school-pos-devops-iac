@@ -1,0 +1,48 @@
+---
+- name: Install git so the application source can be cloned
+  ansible.builtin.dnf:
+    name: git
+    state: present
+
+- name: Clone the application source
+  ansible.builtin.git:
+    repo: "{{ app_repo_url }}"
+    dest: "{{ app_src_dir }}"
+    version: "{{ app_repo_version }}"
+    depth: 1
+
+# Upstream ships a .dockerignore but no Dockerfile: writing it is part of
+# the exercise, and it is the only file in the build context we own.
+- name: Render the Dockerfile into the build context
+  ansible.builtin.template:
+    src: Dockerfile.j2
+    dest: "{{ app_src_dir }}/Dockerfile"
+    owner: root
+    group: root
+    mode: "0644"
+
+# force_source stays at its default of false: the only idempotence check
+# this module makes is whether the image already exists, so forcing it would
+# rebuild on every run and never report changed=0.
+- name: Build the application image
+  community.docker.docker_image:
+    name: "{{ app_image }}"
+    source: build
+    build:
+      path: "{{ app_src_dir }}"
+    state: present
+
+# no_log because the vault password is passed as an environment variable:
+# without it, a failure here would print the module arguments -- password
+# included -- into the log collected as evidence.
+- name: Run the application container
+  community.docker.docker_container:
+    name: "{{ app_container_name }}"
+    image: "{{ app_image }}"
+    state: started
+    restart_policy: unless-stopped
+    ports:
+      - "{{ app_port }}:{{ app_container_port }}"
+    env:
+      APP_ADMIN_PASSWORD: "{{ app_admin_password }}"
+  no_log: true

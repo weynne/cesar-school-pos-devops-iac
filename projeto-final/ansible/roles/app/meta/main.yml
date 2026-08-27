@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: Weynne Guimarães
+  description: Builds and runs the getting-started-app container
+  company: CESAR School
+  license: MIT
+  min_ansible_version: "2.16"
+
+  platforms:
+    - name: Amazon
+      versions:
+        - all
+
+  galaxy_tags:
+    - docker
+    - nodejs
+
+dependencies: []

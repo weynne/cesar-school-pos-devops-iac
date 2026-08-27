@@ -1,0 +1,10 @@
+FROM {{ app_node_image }}
+
+WORKDIR /app
+COPY . .
+RUN npm ci --omit=dev
+
+# Fixed, not templated: src/index.js calls app.listen(3000) with the port
+# hardcoded, so only the host side of the mapping is configurable.
+EXPOSE 3000
+CMD ["node", "src/index.js"]

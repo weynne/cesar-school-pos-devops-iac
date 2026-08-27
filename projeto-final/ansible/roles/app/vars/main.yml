@@ -1,0 +1,6 @@
+---
+# Internal to the role: paths and names nobody outside should need to change.
+app_src_dir: /opt/getting-started-app
+app_image: getting-started-app:latest
+app_container_name: getting-started-app
+app_container_port: 3000
