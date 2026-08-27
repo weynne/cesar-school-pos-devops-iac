@@ -275,6 +275,28 @@ uma falha dele não tem como marcar recurso nenhum do Terraform.
 | AWS CLI | v2 | credenciais válidas em `us-east-1` |
 | `boto3` / `botocore` | — | **no mesmo ambiente do Ansible** |
 
+### Credenciais AWS
+
+No **AWS Academy Learner Lab**, o bloco em *AWS Details → AWS CLI* traz
+**três** valores, não dois: além de `aws_access_key_id` e
+`aws_secret_access_key`, vem o `aws_session_token`. Cole os três em
+`~/.aws/credentials` — omitir o token faz toda chamada falhar com
+`InvalidClientTokenId`.
+
+```bash
+aws configure set region us-east-1
+aws sts get-caller-identity     # se falhar aqui, nada abaixo funciona
+```
+
+A sessão do lab expira em **3 a 4 horas** e as credenciais mudam a cada
+reinício. Rode o `get-caller-identity` antes de cada bloco de comandos: é
+mais rápido que interpretar o erro no meio de um `apply`.
+
+> [!TIP]
+> O ciclo completo — `apply` nos dois workspaces, Ansible, evidências e
+> `destroy` — cabe folgado numa sessão. Mas comece com a sessão recém-aberta,
+> não com uma que já está de pé há duas horas.
+
 As coleções e o `boto3` são a parte que costuma falhar em silêncio:
 
 ```bash
@@ -753,6 +775,22 @@ O plugin `aws_ec2` publica as tags da instância numa hostvar chamada `tags`, e
 `tags` é uma das 76 palavras reservadas do Ansible. O aviso é inofensivo:
 nenhuma task do projeto usa `tags` como palavra-chave, e o `keyed_groups`
 resolve as tags dentro do plugin, antes da resolução de variáveis.
+
+**`UnauthorizedOperation` com `explicit deny` na policy `voc-cancel-cred`**
+A sessão do Learner Lab terminou. As credenciais ainda existem em
+`~/.aws/credentials`, mas o lab anexou uma policy de negação explícita — por
+isso o erro fala em autorização, e não em token inválido. Reinicie o lab e cole
+as credenciais novas; não é erro de código.
+
+```
+An error occurred (UnauthorizedOperation) ... is not authorized to perform:
+ec2:DescribeInstances with an explicit deny in an identity-based policy:
+arn:aws:iam::...:policy/voc-cancel-cred
+```
+
+**`InvalidClientTokenId` em qualquer comando `aws`**
+Falta o `aws_session_token` em `~/.aws/credentials`. O Learner Lab entrega três
+valores; com dois, a autenticação nunca completa.
 
 **A aplicação não responde pelo DNS**
 Confira se a URL tem a porta. O Security Group abre apenas 22 e 3000; um
