@@ -10,8 +10,8 @@ locals {
   # creates automatically, mapped here only so plan/validate work before
   # `terraform workspace new dev`. Real deployments use dev and prod.
   environment_config = {
-    default = { instance_type = "t2.micro", vpc_cidr = "10.0.0.0/16" }
-    dev     = { instance_type = "t2.micro", vpc_cidr = "10.10.0.0/16" }
+    default = { instance_type = "t3.micro", vpc_cidr = "10.0.0.0/16" }
+    dev     = { instance_type = "t3.micro", vpc_cidr = "10.10.0.0/16" }
     prod    = { instance_type = "t3.micro", vpc_cidr = "10.20.0.0/16" }
   }
 

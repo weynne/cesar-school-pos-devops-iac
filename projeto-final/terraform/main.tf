@@ -1,5 +1,5 @@
 # Entry point: the workspace guard and the composition of the two modules.
-# Read this first -- it shows how network and web-server fit together.
+# Read this first -- it shows how network and docker-host fit together.
 
 # "default" is not an environment. It is mapped in locals.tf only so that
 # validate and plan can resolve, but applying there would create a third,
@@ -16,6 +16,17 @@ resource "terraform_data" "workspace_guard" {
   }
 }
 
+# Our own pair, not the Learner Lab's "vockey": that one exists outside
+# Terraform. Only the public half reaches AWS, so the private key stays local.
+resource "aws_key_pair" "this" {
+  # Prefixed, not fixed: key pair names are unique per region, so a fixed name
+  # applies in dev and then fails in prod with InvalidKeyPair.Duplicate.
+  key_name = "${local.name_prefix}-key"
+
+  # pathexpand() because file() does not expand ~.
+  public_key = file(pathexpand(var.public_key_path))
+}
+
 module "network" {
   source = "./modules/network"
 
@@ -23,8 +34,8 @@ module "network" {
   vpc_cidr    = local.config.vpc_cidr
 }
 
-module "web_server" {
-  source = "./modules/web-server"
+module "docker_host" {
+  source = "./modules/docker-host"
 
   # Referencing module.network outputs is what orders the creation:
   # Terraform infers the dependency from the reference, so no depends_on.
@@ -32,16 +43,8 @@ module "web_server" {
   subnet_id = module.network.public_subnet_id
 
   name_prefix      = local.name_prefix
-  environment      = local.environment
   instance_type    = local.config.instance_type
-  http_port        = var.http_port
+  app_port         = var.app_port
   ssh_ingress_cidr = var.ssh_ingress_cidr
-  student_name     = var.student_name
-  class_name       = var.class_name
-  stack_items      = var.stack_items
-  page_title       = var.page_title
-  page_subtitle    = var.page_subtitle
-  course_name      = var.course_name
-  professor_name   = var.professor_name
-  key_name         = var.key_name
+  key_name         = aws_key_pair.this.key_name
 }

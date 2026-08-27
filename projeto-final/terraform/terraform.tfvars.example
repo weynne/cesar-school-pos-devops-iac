@@ -23,30 +23,25 @@ ssh_ingress_cidr = "YOUR.IP.HERE/32"
 # Optional -- sensible defaults already set in variables.tf; uncomment to change
 # ---------------------------------------------------------------------------
 
-# EC2 key pair for SSH access. Without it the instance still boots, but there
-# is no way in to read /var/log/cloud-init-output.log when something breaks.
-# The AWS Academy Learner Lab ships with a key pair named "vockey".
-# key_name = "vockey"
+# Public key registered as the EC2 key pair. Ansible reaches the instance with
+# the private half, so generate the pair before the first apply:
+#   ssh-keygen -t ed25519 -f ~/.ssh/projeto-final
+# public_key_path = "~/.ssh/projeto-final.pub"
 
 # Region for all resources. The Learner Lab only allows us-east-1.
 # aws_region = "us-east-1"
 
-# Project identifier, used as a name prefix and in the Project tag.
-# project_name = "atividade1-pos-devops-iac"
+# Project identifier, used as a name prefix and in the Project tag. The Ansible
+# dynamic inventory filters on that tag, so both sides have to agree.
+# project_name = "projeto-final-pos-devops-iac"
 
-# Public HTTP port.
-# http_port = 80
-
-# Content shown on the published page. Defaults describe this assignment;
-# override only if the project is reused for a different class.
-# student_name   = "Your Full Name"
-# class_name     = "Your Class"
-# course_name    = "Course Name"
-# professor_name = "Professor Name"
+# Port the container publishes, and the only application port the security
+# group opens.
+# app_port = 3000
 
 # ---------------------------------------------------------------------------
 # Not configurable here
 # ---------------------------------------------------------------------------
 # instance_type and vpc_cidr vary per workspace and are set in locals.tf:
-#   dev  -> t2.micro, 10.10.0.0/16
+#   dev  -> t3.micro, 10.10.0.0/16
 #   prod -> t3.micro, 10.20.0.0/16
