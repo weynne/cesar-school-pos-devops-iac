@@ -374,7 +374,15 @@ abre vive em `.vault_pass`, que está no `.gitignore` e não vem no clone. Sem
 ela, qualquer `ansible-playbook` falha na decifragem.
 
 Como o valor protegido é uma **senha de admin simulada**, que não dá acesso a
-nada, recrie o cofre com a sua própria senha:
+nada, recrie o cofre com a sua própria senha.
+
+> [!NOTE]
+> Se preferir acessar o cofre deste repositório em vez de criar o seu, envie um
+> e-mail solicitando a senha para **wjgcl@cesar.school**. Ela não está
+> versionada de propósito: publicar a senha ao lado do arquivo que ela decifra
+> anularia a proteção do `ansible-vault`.
+
+Para criar o seu:
 
 ```bash
 cd projeto-final/ansible
