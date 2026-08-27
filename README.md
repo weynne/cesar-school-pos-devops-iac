@@ -216,11 +216,69 @@ Gere o par de chaves que o Terraform vai registrar (uma vez só):
 ssh-keygen -t ed25519 -f ~/.ssh/projeto-final -N "" -C "projeto-final-iac"
 ```
 
-E a senha do Ansible Vault, que **nunca** vai para o Git:
+### Você precisa do seu próprio bucket de state
+
+O [`backend.tf`](projeto-final/terraform/backend.tf) aponta para o bucket desta
+entrega, que **não é acessível de fora**. Nomes de bucket são únicos na AWS
+inteira, então troque `SEU-NOME` por algo só seu:
 
 ```bash
-openssl rand -base64 32 > projeto-final/ansible/.vault_pass
-chmod 600 projeto-final/ansible/.vault_pass
+export BUCKET="tfstate-projeto-final-SEU-NOME"
+
+# 1) Criar o bucket (us-east-1 é a única região que NÃO aceita
+#    --create-bucket-configuration):
+aws s3api create-bucket --bucket "$BUCKET" --region us-east-1
+
+# 2) Versionamento: permite recuperar um state corrompido:
+aws s3api put-bucket-versioning --bucket "$BUCKET" \
+  --versioning-configuration Status=Enabled
+
+# 3) O state guarda dados sensíveis em texto plano; bloqueie acesso público:
+aws s3api put-public-access-block --bucket "$BUCKET" \
+  --public-access-block-configuration \
+  "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+# 4) E cifre em repouso:
+aws s3api put-bucket-encryption --bucket "$BUCKET" \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+```
+
+O `init` mais adiante recebe esse bucket por `-backend-config`, sem editar o
+`backend.tf`.
+
+### Você precisa recriar o vault
+
+<!-- a partir da raiz do repositório -->
+
+O [`vault.yml`](projeto-final/ansible/group_vars/all/vault.yml) está versionado
+**cifrado** — é assim que o `ansible-vault` deve ser usado. Mas a senha que o
+abre vive em `.vault_pass`, que está no `.gitignore` e não vem no clone. Sem
+ela, qualquer `ansible-playbook` falha na decifragem.
+
+Como o valor protegido é uma **senha de admin simulada**, que não dá acesso a
+nada, recrie o cofre com a sua própria senha:
+
+```bash
+cd projeto-final/ansible
+
+openssl rand -base64 32 > .vault_pass
+chmod 600 .vault_pass
+
+rm group_vars/all/vault.yml
+ansible-vault create group_vars/all/vault.yml
+```
+
+No editor que abrir, uma linha:
+
+```yaml
+vault_app_admin_password: "qualquer-valor-ficticio"
+```
+
+Confirme que ficou cifrado — a primeira linha tem que ser o cabeçalho do vault:
+
+```bash
+head -1 group_vars/all/vault.yml     # $ANSIBLE_VAULT;1.1;AES256
 ```
 
 ---
@@ -228,6 +286,11 @@ chmod 600 projeto-final/ansible/.vault_pass
 ## Execução
 
 Os comandos abaixo são exatamente os que produziram as evidências.
+
+> [!NOTE]
+> Os `cd` marcados com `projeto-final/...` partem da **raiz do repositório**;
+> os marcados com `../` são relativos ao passo anterior. Se estiver perdido,
+> volte para a raiz com `cd "$(git rev-parse --show-toplevel)"`.
 
 ### 1. Variáveis locais
 
@@ -246,7 +309,7 @@ O IP residencial muda; reconfirme antes de cada `apply`.
 ### 2. Backend e workspace
 
 ```bash
-terraform init
+terraform init -backend-config="bucket=$BUCKET"
 terraform fmt -check -recursive
 terraform validate
 terraform workspace select -or-create dev
