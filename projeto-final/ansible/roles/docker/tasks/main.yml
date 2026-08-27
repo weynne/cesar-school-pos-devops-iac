@@ -1,0 +1,17 @@
+---
+- name: Install the docker engine and the collection's python dependency
+  ansible.builtin.dnf:
+    name: "{{ docker_packages }}"
+    state: present
+
+- name: Ensure the docker daemon is running and starts on boot
+  ansible.builtin.systemd_service:
+    name: "{{ docker_service_name }}"
+    state: started
+    enabled: true
+
+- name: Let the login user reach the docker socket without sudo
+  ansible.builtin.user:
+    name: "{{ docker_admin_user }}"
+    groups: docker
+    append: true

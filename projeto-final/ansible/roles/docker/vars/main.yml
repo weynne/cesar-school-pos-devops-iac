@@ -1,0 +1,9 @@
+---
+# AL2023 package names. "docker" is Amazon's build; "docker-ce" is the
+# upstream repository, which publishes nothing for AL2023. python3-requests
+# is the only Python dependency community.docker 5.x still needs.
+docker_packages:
+  - docker
+  - python3-requests
+
+docker_service_name: docker

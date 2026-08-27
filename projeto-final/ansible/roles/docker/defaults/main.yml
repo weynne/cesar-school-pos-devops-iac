@@ -1,0 +1,4 @@
+---
+# Login user that gets docker socket access. Changes with the AMI family:
+# ec2-user on Amazon Linux, ubuntu on Ubuntu.
+docker_admin_user: ec2-user

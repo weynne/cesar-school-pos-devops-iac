@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: Weynne Guimarães
+  description: Installs and enables the Docker Engine on Amazon Linux 2023
+  company: CESAR School
+  license: MIT
+  min_ansible_version: "2.16"
+
+  platforms:
+    - name: Amazon
+      versions:
+        - all
+
+  galaxy_tags:
+    - docker
+    - aws
+
+dependencies: []
