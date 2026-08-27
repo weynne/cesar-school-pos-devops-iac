@@ -161,15 +161,15 @@ provocado.
 
 ### O que dispara o quê, em que ordem
 
-| # | Arquivo | O que faz | Produz |
-| --- | --- | --- | --- |
-| 1 | `terraform/main.tf` | Cria key pair, VPC e a instância | Uma EC2 com as tags `Project`, `Environment` e `Role` |
-| 2 | `terraform/providers.tf` | `default_tags` aplica `Project` e `Environment` a **todo** recurso | As tags que o passo 3 vai filtrar |
-| 3 | `ansible/inventory/aws_ec2.yml` | Consulta a EC2 e converte tags em grupos | `role_docker_host`, `env_dev`, `env_prod` |
-| 4 | `ansible/ansible.cfg` | Aponta o inventário, o usuário e a chave privada | Conexão SSH sem flags na linha de comando |
-| 5 | `ansible/site.yml` | Alvo `role_docker_host`, aplica as roles em ordem | — |
-| 6 | `ansible/roles/docker` | Engine, daemon habilitado, usuário no grupo | Host pronto para os módulos `community.docker` |
-| 7 | `ansible/roles/app` | Clona, renderiza o Dockerfile, builda e sobe o container | Aplicação em `:3000` |
+| # | Arquivo | O que faz, e o que isso produz |
+| --- | --- | --- |
+| 1 | `terraform/main.tf` | Cria key pair, VPC e instância → uma EC2 com as tags `Project`, `Environment` e `Role` |
+| 2 | `terraform/providers.tf` | `default_tags` aplica `Project` e `Environment` a **todo** recurso → as tags que o passo 3 filtra |
+| 3 | `ansible/inventory/aws_ec2.yml` | Consulta a EC2 e converte tags em grupos → `role_docker_host`, `env_dev`, `env_prod` |
+| 4 | `ansible/ansible.cfg` | Aponta inventário, usuário e chave privada → conexão SSH sem flags na linha de comando |
+| 5 | `ansible/site.yml` | Mira `role_docker_host` e aplica as roles na ordem em que estão escritas |
+| 6 | `ansible/roles/docker` | Engine, daemon habilitado, usuário no grupo → host pronto para os módulos `community.docker` |
+| 7 | `ansible/roles/app` | Clona, renderiza o Dockerfile, builda e sobe o container → aplicação em `:3000` |
 
 Nada nesse encadeamento passa por arquivo escrito à mão: o único acoplamento
 entre as duas ferramentas são **as tags**.
