@@ -1,0 +1,4 @@
+---
+collections:
+  - name: amazon.aws          # dynamic inventory plugin (aws_ec2)
+  - name: community.docker    # docker_image_build, docker_container
