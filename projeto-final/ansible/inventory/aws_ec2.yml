@@ -1,0 +1,38 @@
+---
+# Dynamic inventory: Ansible asks the EC2 API which hosts exist instead of
+# reading a file someone has to keep up to date. This is the seam between the
+# two tools -- Terraform tags the instance, this file turns tags into groups.
+#
+# The filename matters: the plugin only accepts files ending in aws_ec2.yml
+# or aws_ec2.yaml, and ignores anything else without an error.
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - us-east-1
+
+# Narrow to what this project owns. The Project tag comes from default_tags
+# in providers.tf, so its value has to match var.project_name exactly.
+# instance-state-name keeps terminated instances from earlier runs out.
+filters:
+  tag:Project: projeto-final-pos-devops-iac
+  instance-state-name: running
+
+# Tags become groups. Role gives site.yml its target (role_docker_host);
+# Environment gives --limit its dev/prod switch (env_dev, env_prod).
+# Characters a group name cannot hold become underscores, which is why
+# the "docker-host" tag value arrives as docker_host.
+keyed_groups:
+  - key: tags.Role
+    prefix: role
+  - key: tags.Environment
+    prefix: env
+
+# Without this the plugin hands Ansible the private DNS name, which does not
+# resolve from outside the VPC, and every connection times out.
+compose:
+  ansible_host: public_ip_address
+
+# Report hosts by their Name tag instead of i-0abc123def: the evidence for
+# this delivery is a terminal capture, and instance IDs say nothing.
+hostnames:
+  - tag:Name
