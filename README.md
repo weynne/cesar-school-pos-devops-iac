@@ -64,32 +64,32 @@ flowchart TB
 
     subgraph AWS["☁️ AWS · us-east-1"]
         IGW["🚪 Internet Gateway"]
-        subgraph VPC["VPC · 10.10.0.0/16 (dev) · 10.20.0.0/16 (prod)"]
-            subgraph SN["🟩 Subnet pública · /24"]
-                SG["🛡️ Security Group<br/>22 ← seu IP · 3000 ← 0.0.0.0/0"]
-                EC2["🖥️ EC2 t3.micro · Amazon Linux 2023<br/>─────────────<br/>🐳 Docker Engine<br/>📦 getting-started-app :3000"]
-            end
+        subgraph VPC["VPC · 10.10.0.0/16 dev · 10.20.0.0/16 prod"]
             RT["🗺️ Route Table<br/>0.0.0.0/0 → IGW"]
+            subgraph SN["🟩 Subnet pública · /24"]
+                SG["🛡️ Security Group<br/>22 ← seu IP<br/>3000 ← 0.0.0.0/0"]
+                EC2["🖥️ EC2 t3.micro<br/>Amazon Linux 2023<br/>🐳 Docker Engine<br/>📦 getting-started-app<br/>porta 3000"]
+            end
         end
     end
 
-    S3[("📦 S3 · state remoto<br/>um objeto por workspace")]
+    S3[("📦 S3 · state remoto<br/>um objeto<br/>por workspace")]
 
     User -->|":3000"| IGW
     User -->|":22"| IGW
     IGW --> RT --> SG --> EC2
-    EC2 -.->|estado registrado em| S3
+    EC2 -.->|"registra estado em"| S3
 ```
 
 E o fluxo entre as duas ferramentas:
 
 ```mermaid
 flowchart LR
-    subgraph TF["🟣 Terraform · terraform apply · 13 recursos"]
+    subgraph TF["🟣 Terraform · 13 recursos"]
         direction TB
         GUARD["terraform_data<br/>guard de workspace"]
-        NET["VPC · subnet pública · IGW<br/>route table · rota · associação"]
-        SEC["Security Group<br/>+ 3 regras: 22, 3000, egress"]
+        NET["VPC · subnet · IGW<br/>route table · rota<br/>associação"]
+        SEC["Security Group<br/>3 regras<br/>22 · 3000 · egress"]
         KEY["Key Pair<br/>só a metade pública"]
         EC2["EC2 t3.micro<br/>crua, sem software"]
         NET --> EC2
@@ -97,20 +97,20 @@ flowchart LR
         KEY --> EC2
     end
 
-    TAGS["🔗 tags gravadas na instância<br/>Project · Environment · Role"]
+    TAGS["🔗 tags na instância<br/>Project<br/>Environment<br/>Role"]
 
     subgraph ANS["🔴 Ansible · ansible-playbook"]
         direction TB
         INV["inventory/aws_ec2.yml<br/>filtra por tag:Project"]
         GRP["grupos gerados<br/>role_docker_host<br/>env_dev · env_prod"]
         PLAY["site.yml --limit env_dev"]
-        RD["role docker<br/>engine · daemon · grupo"]
-        RA["role app<br/>git · Dockerfile · build · container"]
+        RD["role docker<br/>engine · daemon<br/>grupo do usuário"]
+        RA["role app<br/>git · Dockerfile<br/>build · container"]
         INV --> GRP --> PLAY --> RD --> RA
     end
 
     EC2 --> TAGS --> INV
-    RA --> OUT["🎉 getting-started-app<br/>respondendo em :3000"]
+    RA --> OUT["🎉 getting-started-app<br/>na porta 3000"]
 ```
 
 O Terraform entrega **tudo que está em volta** da máquina e para na porta dela.
