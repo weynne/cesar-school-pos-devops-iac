@@ -15,15 +15,22 @@ diretório, com código, evidências e state remoto separados.
 
 ## Entregas
 
-| Entrega | Diretório | Documentação | O que provisiona |
-| --- | --- | --- | --- |
-| **Projeto Final** | [`projeto-final/`](projeto-final/) | **este documento** | VPC + EC2 pelo Terraform; Docker Engine e a aplicação `getting-started-app` pelo Ansible |
-| **Atividade 1** | [`atividade-1/`](atividade-1/) | [`atividade-1/README.md`](atividade-1/README.md) | VPC + EC2 servindo uma página web, com backend S3 e workspaces |
+**Projeto Final — Terraform + Ansible** · código em
+[`projeto-final/`](projeto-final/) · documentado **neste arquivo**
 
-A Atividade 1 tem documentação própria e completa no diretório dela. Aqui, a
-seção [Da Atividade 1 ao Projeto Final](#da-atividade-1-ao-projeto-final)
-registra o que foi reaproveitado, o que foi adaptado e o que nasceu nesta
-entrega.
+> VPC e EC2 provisionados pelo Terraform; Docker Engine e a aplicação
+> `getting-started-app` configurados pelo Ansible.
+
+**Atividade 1 — Terraform na AWS** · código em
+[`atividade-1/`](atividade-1/) · documentado em
+[`atividade-1/README.md`](atividade-1/README.md)
+
+> VPC e EC2 servindo uma página web, com state remoto no S3 e workspaces
+> `dev` e `prod`. Os módulos desta entrega são a base reaproveitada pelo
+> projeto final.
+
+A seção [Da Atividade 1 ao Projeto Final](#da-atividade-1-ao-projeto-final)
+registra o que foi herdado, o que foi adaptado e o que nasceu nesta entrega.
 
 ---
 
