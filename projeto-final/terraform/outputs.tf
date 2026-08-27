@@ -16,6 +16,14 @@ output "app_url" {
   value       = "http://${module.docker_host.public_ip}:${var.app_port}"
 }
 
+# Same application, reached by name. Both carry the port explicitly: the
+# security group opens 22 and 3000 only, so a bare hostname lands on 80 and
+# times out.
+output "app_url_dns" {
+  description = "URL to reach the application by public DNS name"
+  value       = "http://${module.docker_host.public_dns}:${var.app_port}"
+}
+
 # Derived from public_key_path so the command cannot drift from the key the
 # instance actually accepts.
 output "ssh_command" {
