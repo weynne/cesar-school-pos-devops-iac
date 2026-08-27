@@ -198,7 +198,7 @@ passo obrigatório do roteiro de execução, e não um comando de depuração.
 | Abordagem | Onde roda | Implicação |
 | --- | --- | --- |
 | `remote-exec` | Dentro do servidor | Configuraria a instância no lugar do Ansible. Proibido pelo enunciado |
-| `local-exec` | Na máquina do operador | Alternativa aceita pelo enunciado (Opção B). Provisioners só disparam na **criação** do recurso, então reaplicar apenas a configuração exigiria recriar a instância |
+| `local-exec` | Na máquina do operador | Alternativa aceita pelo enunciado (Opção B). Roda como parte do `terraform apply`: a configuração deixa de ser um passo que se repete sozinho, e uma falha do Ansible marca o recurso do Terraform como problemático |
 | **inventário dinâmico** | Etapas separadas | **Adotado nesta entrega.** O Ansible roda quantas vezes for preciso sem tocar na infraestrutura — que é o que torna a prova de idempotência possível |
 
 Não há **nenhum** bloco `provisioner` no código desta entrega:
