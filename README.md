@@ -109,11 +109,9 @@ descobre a infraestrutura consultando a API da EC2 através do plugin
 `amazon.aws.aws_ec2`, e o `ansible-playbook` é executado como um passo
 próprio, depois do `terraform apply`.
 
-A escolha não é de conveniência. O material da disciplina
-(`05-terraform-ansible/README.md`) classifica o `local-exec` dentro do
-`aws_instance` como **anti-padrão** e propõe, no exercício 1 do capítulo 6,
-exatamente a refatoração implementada aqui: remover o provisioner, aplicar só
-a infraestrutura e conectar as duas etapas por inventário dinâmico.
+Com as duas etapas independentes, a configuração pode ser reaplicada quantas
+vezes for necessário sem tocar na infraestrutura — que é o que torna possível
+executar o playbook duas vezes seguidas e comprovar `changed=0`.
 
 ### O que dispara o quê, em que ordem
 
@@ -170,17 +168,17 @@ voltar vazio — e o Ansible **não falha** nesse caso, apenas termina com
 `ok=0`, o que parece sucesso. É por isso que `ansible-inventory --graph` é um
 passo obrigatório do roteiro de execução, e não um comando de depuração.
 
-### Por que não `remote-exec` nem `local-exec`
+### Onde cada abordagem executa
 
 | | Onde roda | Por que foi descartado |
 | --- | --- | --- |
 | `remote-exec` | Dentro do servidor | Configura a instância no lugar do Ansible. Proibido pelo enunciado |
-| `local-exec` | Na máquina do operador | Aceito pelo enunciado, mas o provisioner só dispara na **criação** do recurso: reconfigurar exige recriar a instância, e uma falha do Ansible marca a EC2 como problemática mesmo tendo sido criada com sucesso |
+| `local-exec` | Na máquina do operador | Alternativa aceita pelo enunciado (Opção B). Provisioners só disparam na **criação** do recurso, então reaplicar apenas a configuração exigiria recriar a instância |
 | **inventário dinâmico** | Etapas separadas | O Ansible pode rodar quantas vezes for preciso sem tocar na infraestrutura — que é o que torna a prova de idempotência possível |
 
 Não há **nenhum** bloco `provisioner` no código desta entrega:
 
-```console
+```text
 $ grep -rn 'provisioner' projeto-final --include='*.tf'
 projeto-final/terraform/modules/docker-host/main.tf:2:# installing software mixes the same responsibilities as provisioner
 projeto-final/terraform/modules/docker-host/main.tf:3:# "remote-exec" -- everything inside the instance belongs to Ansible.
@@ -449,9 +447,9 @@ nunca entra no state.
 por região, não por workspace: um nome fixo funciona no `dev` e falha no
 `prod` com `InvalidKeyPair.Duplicate`.
 
-**Regras de Security Group como recursos separados.** `aws_vpc_security_group_ingress_rule`
-em vez de blocos `ingress` embutidos — alterar uma regra não recria o grupo
-inteiro.
+**Regras de Security Group como recursos separados.**
+`aws_vpc_security_group_ingress_rule` em vez de blocos `ingress` embutidos —
+alterar uma regra não recria o grupo inteiro.
 
 **`docker_image` com `source: build`, não `docker_image_build`.** O módulo
 mais novo exige o plugin `buildx` no host, que o pacote `docker` do Amazon
