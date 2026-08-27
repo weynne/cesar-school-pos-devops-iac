@@ -224,6 +224,36 @@ projeto-final/terraform/modules/docker-host/main.tf:3:# "remote-exec" -- everyth
 As duas únicas ocorrências estão num comentário explicando por que o padrão
 não é usado.
 
+#### O que acontece quando o Ansible falha dentro de um `local-exec`
+
+O Terraform espera o **código de saída** do `ansible-playbook`. Zero, e o
+`apply` segue; qualquer outro, e o `apply` termina com erro e marca o recurso
+que carrega o provisioner como *tainted* — o próximo `apply` o destrói e recria.
+
+O tamanho do estrago depende de onde o provisioner mora. Preso ao
+`aws_instance`, um erro de playbook custa **recriar a máquina inteira**. Num
+`null_resource` com `triggers`, como o enunciado sugere, recria apenas o
+recurso lógico, que não existe na AWS e não custa nada — motivo pelo qual essa
+é a montagem recomendada da Opção B.
+
+Dá para contornar com `on_failure = continue`, que faz o Terraform registrar o
+erro e seguir sem marcar nada:
+
+```hcl
+provisioner "local-exec" {
+  command    = "ansible-playbook ..."
+  on_failure = continue    # palavra nua, não string
+}
+```
+
+Mas isso troca uma falha barulhenta por uma silenciosa: o `apply` termina
+verde, o servidor fica sem configuração, e o problema reaparece mais tarde
+como "a aplicação não responde". Num fluxo em que o Ansible é a única coisa que
+instala software, é o pior negócio possível.
+
+Nada disso se aplica à Opção A: o `ansible-playbook` é um comando próprio, e
+uma falha dele não tem como marcar recurso nenhum do Terraform.
+
 ---
 
 ## Pré-requisitos do projeto final
@@ -286,8 +316,6 @@ O `init` mais adiante recebe esse bucket por `-backend-config`, sem editar o
 
 ### Você precisa recriar o vault
 
-<!-- a partir da raiz do repositório -->
-
 O [`vault.yml`](projeto-final/ansible/group_vars/all/vault.yml) está versionado
 **cifrado** — é assim que o `ansible-vault` deve ser usado. Mas a senha que o
 abre vive em `.vault_pass`, que está no `.gitignore` e não vem no clone. Sem
@@ -328,6 +356,9 @@ Os comandos abaixo são exatamente os que produziram as evidências.
 > Os `cd` marcados com `projeto-final/...` partem da **raiz do repositório**;
 > os marcados com `../` são relativos ao passo anterior. Se estiver perdido,
 > volte para a raiz com `cd "$(git rev-parse --show-toplevel)"`.
+>
+> O passo 2 usa a variável `$BUCKET` definida nos pré-requisitos. Num terminal
+> novo, exporte-a de novo antes do `init`.
 
 ### 1. Variáveis locais
 
@@ -536,9 +567,7 @@ projeto-final/
 └── evidencias/
 ```
 
-O módulo `docker-host` deriva do `web-server` da Atividade 1. As diferenças:
-o `user_data` e os templates HTML saíram, a porta publicada passou de 80 para
-3000, o `key_name` deixou de ser opcional e a instância ganhou a tag `Role`.
+O que veio da Atividade 1 e o que mudou está detalhado na seção seguinte.
 
 ---
 
@@ -664,6 +693,13 @@ caso contrário é ignorado sem erro.
 adotado na Atividade 1: o código segue o padrão de mercado, a documentação
 segue a língua da disciplina.
 
+**Acesso por SSH com chave, não por Session Manager.** Fora de um laboratório,
+a resposta madura seria o AWS Systems Manager Session Manager: shell na
+instância sem abrir a porta 22, sem chave SSH para gerenciar e com auditoria no
+CloudTrail. Ele exige um *instance profile* IAM anexado à instância, e o
+Learner Lab não permite criar roles IAM — daí o SSH com chave, mitigado pelo
+Security Group que restringe a porta 22 a um único `/32`.
+
 **`host_key_checking = False`.** O IP público muda a cada `apply`/`destroy`, e
 a verificação de host key geraria prompt interativo a cada execução. É um
 desvio consciente e aceitável em laboratório; em produção seria um vetor de
@@ -711,7 +747,8 @@ resolve as tags dentro do plugin, antes da resolução de variáveis.
 **A aplicação não responde pelo DNS**
 Confira se a URL tem a porta. O Security Group abre apenas 22 e 3000; um
 hostname sem `:3000` vai para a porta 80 e resulta em timeout. Use
-`terraform output -raw app_url_dns`, que já monta a URL completa.
+`echo "$(terraform output -raw app_url_dns)"`, que monta a URL completa e ainda
+imprime a quebra de linha que o terminal precisa para reconhecer o link.
 
 # Como as ferramentas funcionam
 
