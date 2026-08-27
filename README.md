@@ -302,12 +302,32 @@ As coleções e o `boto3` são a parte que costuma falhar em silêncio:
 ```bash
 cd projeto-final/ansible
 ansible-galaxy collection install -r requirements.yml
-
-# Se o Ansible foi instalado por pipx, ele vive num venv isolado: um
-# "pip install boto3" comum instala num Python que ele não enxerga, e o
-# inventário dinâmico volta vazio sem explicar por quê.
-pipx inject ansible boto3 botocore
 ```
+
+O `boto3` precisa estar no **mesmo interpretador Python que o Ansible usa**, e
+não em qualquer um do sistema. Descubra qual é e confira:
+
+```bash
+PY=$(ansible --version | sed -n 's/.*python version = .*(\(.*\))$/\1/p')
+echo "$PY"
+"$PY" -c "import boto3, botocore; print('ok')"
+```
+
+Se der `ModuleNotFoundError`, instale pelo método que corresponde à sua
+instalação do Ansible:
+
+```bash
+pipx inject ansible boto3 botocore        # Ansible instalado via pipx
+"$PY" -m pip install boto3 botocore       # qualquer outra forma
+```
+
+> [!IMPORTANT]
+> Um `pip install boto3` avulso costuma cair num Python diferente do que o
+> Ansible usa. O sintoma é cruel: o `ansible-inventory --graph` volta **vazio**,
+> sem mensagem de erro, e parece que o filtro de tags está errado.
+
+Repita o `"$PY" -c "import boto3..."` depois de instalar. Ele tem que imprimir
+`ok` antes de você seguir.
 
 Gere o par de chaves que o Terraform vai registrar (uma vez só):
 
@@ -491,10 +511,12 @@ echo "$(terraform output -raw app_url)"        # pelo IP
 echo "$(terraform output -raw app_url_dns)"    # pelo DNS público
 ```
 
-Para abrir direto do WSL, sem clicar:
+Para abrir direto do terminal, sem clicar:
 
 ```bash
-explorer.exe "$(terraform output -raw app_url)"
+explorer.exe "$(terraform output -raw app_url)"   # WSL
+open        "$(terraform output -raw app_url)"    # macOS
+xdg-open    "$(terraform output -raw app_url)"    # Linux com desktop
 ```
 
 Ambas as URLs carregam a porta explicitamente. O Security Group abre apenas
