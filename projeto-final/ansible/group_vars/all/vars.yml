@@ -1,0 +1,5 @@
+---
+# Indirection on purpose: this file is plain text and greppable, so it shows
+# WHERE a secret is consumed without decrypting anything. The value itself
+# lives in vault.yml, encrypted with ansible-vault.
+app_admin_password: "{{ vault_app_admin_password }}"
