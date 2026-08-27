@@ -73,13 +73,38 @@ E o fluxo entre as duas ferramentas:
 
 ```mermaid
 flowchart LR
-    A["terraform apply"] -->|"cria a EC2 e<br/>aplica as tags"| B["EC2 com tags<br/>Project · Environment · Role"]
-    B -->|"o plugin aws_ec2<br/>consulta a API"| C["inventory/aws_ec2.yml<br/>gera role_docker_host<br/>e env_dev / env_prod"]
-    C -->|"ansible-playbook<br/>--limit env_dev"| D["site.yml"]
-    D --> E["role docker<br/>engine + daemon"]
-    E --> F["role app<br/>clone · build · run"]
-    F --> G["🎉 app no ar em :3000"]
+    subgraph TF["🟣 Terraform · terraform apply · 13 recursos"]
+        direction TB
+        GUARD["terraform_data<br/>guard de workspace"]
+        NET["VPC · subnet pública · IGW<br/>route table · rota · associação"]
+        SEC["Security Group<br/>+ 3 regras: 22, 3000, egress"]
+        KEY["Key Pair<br/>só a metade pública"]
+        EC2["EC2 t3.micro<br/>crua, sem software"]
+        NET --> EC2
+        SEC --> EC2
+        KEY --> EC2
+    end
+
+    TAGS["🔗 tags gravadas na instância<br/>Project · Environment · Role"]
+
+    subgraph ANS["🔴 Ansible · ansible-playbook"]
+        direction TB
+        INV["inventory/aws_ec2.yml<br/>filtra por tag:Project"]
+        GRP["grupos gerados<br/>role_docker_host<br/>env_dev · env_prod"]
+        PLAY["site.yml --limit env_dev"]
+        RD["role docker<br/>engine · daemon · grupo"]
+        RA["role app<br/>git · Dockerfile · build · container"]
+        INV --> GRP --> PLAY --> RD --> RA
+    end
+
+    EC2 --> TAGS --> INV
+    RA --> OUT["🎉 getting-started-app<br/>respondendo em :3000"]
 ```
+
+O Terraform entrega **tudo que está em volta** da máquina e para na porta dela.
+As tags são o único dado que atravessa a fronteira: o Ansible não lê o state,
+não recebe arquivo gerado e não é chamado pelo Terraform — ele descobre a
+instância perguntando à API da EC2 quais máquinas têm aquelas tags.
 
 | Recurso | Papel |
 | --- | --- |
