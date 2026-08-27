@@ -204,7 +204,7 @@ passo obrigatório do roteiro de execução, e não um comando de depuração.
 Não há **nenhum** bloco `provisioner` no código desta entrega:
 
 ```text
-$ grep -rn 'provisioner' projeto-final --include='*.tf'
+$ grep -rn 'provisioner\|remote-exec' projeto-final --include='*.tf'
 projeto-final/terraform/modules/docker-host/main.tf:2:# installing software mixes the same responsibilities as provisioner
 projeto-final/terraform/modules/docker-host/main.tf:3:# "remote-exec" -- everything inside the instance belongs to Ansible.
 ```
@@ -366,6 +366,7 @@ ansible-inventory --graph
 
 ```
 @all:
+  |--@ungrouped:
   |--@aws_ec2:
   |  |--projeto-final-pos-devops-iac-dev-host-instance
   |--@role_docker_host:
