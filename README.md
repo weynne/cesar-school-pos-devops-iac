@@ -1298,12 +1298,19 @@ de comando. Dois detalhes que economizam depuração:
 ```yaml
 collections:
   - name: amazon.aws          # plugin de inventário aws_ec2
+    version: ">=11.4.0,<12.0.0"
+
   - name: community.docker    # docker_image, docker_container
+    version: ">=5.2.1,<6.0.0"
 ```
 
 Declara o que o projeto precisa para rodar em outra máquina. É o equivalente ao
-`required_providers` do Terraform — com a diferença de que o Ansible não tem um
-arquivo de lock: se você quiser reprodutibilidade exata, fixe `version:`.
+`required_providers` do Terraform, com uma diferença importante: o Ansible
+**não tem** arquivo de lock. Sem a restrição de versão, um clone novo instala o
+que estiver publicado no dia — e a `community.docker` já removeu a dependência
+do `docker-py` numa major, e hoje empurra o `docker_image` na direção dos
+módulos separados. As faixas acima aceitam correções dentro da major testada e
+barram a próxima.
 
 </details>
 

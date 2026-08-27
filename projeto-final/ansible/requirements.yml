@@ -1,4 +1,12 @@
 ---
+# Versions are pinned to the major that was tested. Ansible has no lock file
+# equivalent to .terraform.lock.hcl, so without a constraint a fresh clone
+# installs whatever is current -- and community.docker 4.0 already removed the
+# docker-py dependency, while its own docs now steer docker_image towards the
+# split modules. A new major could drop what these roles call.
 collections:
-  - name: amazon.aws          # dynamic inventory plugin (aws_ec2)
-  - name: community.docker    # docker_image_build, docker_container
+  - name: amazon.aws          # dynamic inventory plugin: aws_ec2
+    version: ">=11.4.0,<12.0.0"
+
+  - name: community.docker    # docker_image, docker_container
+    version: ">=5.2.1,<6.0.0"
