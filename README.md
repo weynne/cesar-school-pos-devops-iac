@@ -243,11 +243,19 @@ não é usado.
 
 #### O que acontece quando o Ansible falha dentro de um `local-exec`
 
-O Terraform espera o **código de saída** do `ansible-playbook`. Zero, e o
-`apply` segue; qualquer outro, e o `apply` termina com erro e marca o recurso
-que carrega o provisioner como *tainted* — o próximo `apply` o destrói e recria.
+Ao terminar, o `ansible-playbook` devolve um **código de saída**, e é esse
+número que o Terraform observa.
 
-O tamanho do estrago depende de onde o provisioner mora. Preso ao
+**Se for zero**, o `apply` segue como se nada tivesse acontecido.
+
+**Se for qualquer outro valor**, três coisas acontecem em sequência:
+
+1. o `apply` termina com erro;
+2. o recurso onde o provisioner está declarado é marcado como *tainted*;
+3. o **próximo** `apply` destrói e recria esse recurso — o Terraform deixou de
+   confiar que ele foi configurado corretamente.
+
+O tamanho do estrago depende de onde o provisioner está declarado. Preso ao
 `aws_instance`, um erro de playbook custa **recriar a máquina inteira**. Num
 `null_resource` com `triggers`, como o enunciado sugere, recria apenas o
 recurso lógico, que não existe na AWS e não custa nada — motivo pelo qual essa
