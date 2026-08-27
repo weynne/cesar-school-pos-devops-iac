@@ -1,5 +1,5 @@
-# Entry point: the workspace guard and the composition of the two modules.
-# Read this first -- it shows how network and docker-host fit together.
+# Entry point: the workspace guard, the SSH key pair and the composition of
+# the two modules. Read this first -- it shows how they fit together.
 
 # "default" is not an environment. It is mapped in locals.tf only so that
 # validate and plan can resolve, but applying there would create a third,

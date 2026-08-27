@@ -1,4 +1,6 @@
-# Where the remote state lives: bucket, object key and locking.
+# Where the remote state lives: bucket, object key and locking. The key is
+# deliberately distinct from the atividade-1 one -- same bucket, one state
+# per delivery, so applying here can never overwrite a graded delivery.
 # Separate from versions.tf because this changes when the bucket, account or
 # environment changes -- versions.tf changes about once a year.
 

@@ -1,5 +1,5 @@
-# What the project exposes after an apply: the address to reach the
-# application and the context that makes each run's log self-identifying.
+# What the project exposes after an apply: where to reach the application and
+# how to get into the instance.
 
 output "instance_public_ip" {
   description = "Public IP address of the docker host instance"

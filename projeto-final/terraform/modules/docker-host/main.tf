@@ -1,3 +1,7 @@
+# A bare host on purpose: no user_data, no packages, no application. Terraform
+# installing software mixes the same responsibilities as provisioner
+# "remote-exec" -- everything inside the instance belongs to Ansible.
+
 data "aws_ssm_parameter" "ami" {
   name = var.ami_parameter_name
 }
