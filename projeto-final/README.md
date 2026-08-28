@@ -22,21 +22,21 @@ responsabilidade do Ansible.
 
 **Manual de operações**
 
-- [Arquitetura](#arquitetura) — o que é provisionado, e o fluxo entre as duas ferramentas
-- [Estrutura de diretórios](#estrutura-de-diretórios) — onde cada arquivo mora
-- [Pré-requisitos](#pré-requisitos) — o que preparar antes do primeiro comando
-- [Início rápido](#início-rápido) — a via expressa até a aplicação no ar
-- [Execução](#execução) — o mesmo percurso com o porquê de cada passo
+- [Arquitetura](#arquitetura)
+- [Estrutura de diretórios](#estrutura-de-diretórios)
+- [Pré-requisitos](#pré-requisitos)
+- [Início rápido](#início-rápido)
+- [Execução](#execução)
 - [Destruição](#destruição)
 - [Troubleshooting](#troubleshooting)
 
 **Memorial descritivo**
 
-- [A integração Terraform → Ansible](#a-integração-terraform--ansible) — como as tags costuram as duas ferramentas
+- [A integração Terraform → Ansible](#a-integração-terraform--ansible)
 - [Decisões de arquitetura](#decisões-de-arquitetura)
 - [Divergências em relação ao enunciado](#divergências-em-relação-ao-enunciado)
 - [Da Atividade 1 ao Projeto Final](#da-atividade-1-ao-projeto-final)
-- [Referências](#referências) — evidências e a teoria das duas ferramentas
+- [Referências](#referências)
 - [Créditos](#créditos)
 
 > A primeira metade deste documento é um manual de operações: leia de cima para
