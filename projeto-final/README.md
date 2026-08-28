@@ -942,12 +942,22 @@ caso contrário é ignorado sem erro.
 adotado na Atividade 1: o código segue o padrão de mercado, a documentação
 segue a língua da disciplina.
 
-**Acesso por SSH com chave, não por Session Manager.** Fora de um laboratório,
-a resposta madura seria o AWS Systems Manager Session Manager: shell na
-instância sem abrir a porta 22, sem chave SSH para gerenciar e com auditoria no
-CloudTrail. O Session Manager exige um *instance profile* IAM anexado à
-instância, e o Learner Lab não permite criar roles IAM. Por isso esta entrega
-usa SSH com chave, e restringe a porta 22 a um único `/32` no Security Group.
+**Conexão por SSH, não pelo plugin `aws_ssm`.** O Ansible sabe alcançar uma EC2
+sem SSH: o plugin de conexão `amazon.aws.aws_ssm` executa as tasks por dentro de
+uma sessão do Systems Manager, e vem na mesma coleção que esta entrega já
+instala. Trocar o transporte seria uma linha no `ansible.cfg`, e a porta 22
+poderia sumir do Security Group.
+
+Ele não foi usado porque a instância precisaria estar registrada no SSM como
+*managed node*, e isso exige um *instance profile* IAM com a política
+`AmazonSSMManagedInstanceCore` — o Learner Lab não permite criar roles IAM. O
+plugin ainda pede um bucket S3 para a transferência de arquivos e o
+`session-manager-plugin` instalado na máquina de controle.
+
+Daí o SSH com chave, com a porta 22 restrita a um único `/32` no Security Group.
+Fora do laboratório, o `aws_ssm` seria a escolha melhor: nenhuma porta de
+entrada aberta, nenhuma chave privada para distribuir, e cada comando registrado
+no CloudTrail.
 
 **`host_key_checking = False`.** O IP público muda a cada `apply`/`destroy`, e
 a verificação de host key geraria prompt interativo a cada execução. É um
