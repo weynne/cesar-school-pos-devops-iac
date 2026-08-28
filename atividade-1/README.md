@@ -7,7 +7,8 @@ ambientes.
 
 > Todos os comandos deste documento rodam a partir deste diretório
 > (`atividade-1/`). Os módulos daqui foram reaproveitados pelo
-> [Projeto Final](../README.md), que os adaptou para hospedar um container.
+> [Projeto Final](../projeto-final/README.md), que os adaptou para hospedar
+> um container.
 
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white)
