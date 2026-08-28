@@ -38,10 +38,6 @@ responsabilidade do Ansible.
 - [Referências](#referências)
 - [Créditos](#créditos)
 
-> A primeira metade deste documento é um manual de operações: leia de cima para
-> baixo e a infraestrutura sobe. A segunda é o memorial — por que cada coisa foi
-> feita assim — e só faz sentido depois de rodar.
-
 ---
 
 ## Arquitetura
