@@ -52,7 +52,7 @@ módulos desta entrega são a base que o Projeto Final reaproveitou.
 
 ## Estrutura do repositório
 
-```
+```text
 .
 ├── atividade-1/                # Terraform: VPC + EC2 servindo uma página web
 │   ├── README.md               # documentação completa da entrega

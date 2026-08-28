@@ -414,7 +414,7 @@ Depois, ajuste o `bucket` em [`backend.tf`](backend.tf).
 
 ## Estrutura do repositório
 
-```
+```text
 .
 ├── backend.tf                  # backend "s3" (bucket, key, lock)
 ├── versions.tf                 # required_version + required_providers
@@ -1222,7 +1222,7 @@ curl -s $(terraform output -raw web_url) | grep -E '<h1>|Aluno|Ambiente'
 
 O `aws s3 ls` deve mostrar um caminho por workspace aplicado:
 
-```
+```text
 env:/dev/atividade1/terraform.tfstate     ← workspace dev
 env:/prod/atividade1/terraform.tfstate    ← workspace prod
 ```

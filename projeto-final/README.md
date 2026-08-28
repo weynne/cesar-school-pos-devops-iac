@@ -261,7 +261,7 @@ ansible-inventory --graph            # tem que listar @role_docker_host
 ansible-playbook site.yml --limit env_dev
 ```
 
-```
+```text
 PLAY RECAP ***********************************************************
 ...dev-host-instance : ok=9  changed=8  unreachable=0  failed=0
 ```
@@ -627,7 +627,7 @@ terraform output
 
 Saída relevante:
 
-```
+```text
 app_url             = "http://<ip>:3000"
 app_url_dns         = "http://<dns>:3000"
 instance_public_ip  = "<ip>"
@@ -642,7 +642,7 @@ cd ../ansible
 ansible-inventory --graph
 ```
 
-```
+```text
 @all:
   |--@ungrouped:
   |--@aws_ec2:
@@ -663,7 +663,7 @@ ansible-inventory --graph
 ansible-playbook site.yml --limit env_dev
 ```
 
-```
+```text
 PLAY RECAP ***********************************************************
 ...dev-host-instance : ok=9  changed=8  unreachable=0  failed=0
 ```
@@ -676,7 +676,7 @@ Sem alterar nada — nem código, nem infraestrutura:
 ansible-playbook site.yml --limit env_dev
 ```
 
-```
+```text
 PLAY RECAP ***********************************************************
 ...dev-host-instance : ok=9  changed=0  unreachable=0  failed=0
 ```
@@ -728,7 +728,7 @@ terraform workspace select prod && terraform destroy
 terraform workspace select dev  && terraform destroy
 ```
 
-```
+```text
 Destroy complete! Resources: 13 destroyed.     # prod
 Destroy complete! Resources: 13 destroyed.     # dev
 ```
@@ -776,7 +776,7 @@ navegador e do console da AWS.
 
 ## Estrutura de diretórios
 
-```
+```text
 projeto-final/
 ├── terraform/
 │   ├── backend.tf              # backend S3, key própria desta entrega
@@ -987,7 +987,7 @@ A sessão do Learner Lab terminou. As credenciais ainda existem em
 isso o erro fala em autorização, e não em token inválido. Reinicie o lab e cole
 as credenciais novas; não é erro de código.
 
-```
+```text
 An error occurred (UnauthorizedOperation) ... is not authorized to perform:
 ec2:DescribeInstances with an explicit deny in an identity-based policy:
 arn:aws:iam::...:policy/voc-cancel-cred
@@ -1603,7 +1603,7 @@ regras que não são óbvias:
 Uma role é uma pasta com nomes fixos. O Ansible carrega cada subpasta
 automaticamente pelo nome — não existe arquivo declarando caminhos.
 
-```
+```text
 roles/docker/
 ├── tasks/main.yml        # o que fazer, na ordem em que executa
 ├── defaults/main.yml     # valores que quem usa a role PODE sobrescrever
@@ -1751,7 +1751,7 @@ projeto.
 
 #### 1. `vars/` vence `defaults/`, e a linha de comando vence os dois
 
-```
+```text
 defaults/main.yml  <  group_vars/  <  vars/main.yml  <  --extra-vars
      (mais fraco)                                        (mais forte)
 ```
@@ -1768,7 +1768,7 @@ aplicação, não uma preferência.
 
 #### 2. `group_vars/all/` carrega sozinho, e é onde o vault mora
 
-```
+```text
 group_vars/all/vars.yml    → app_admin_password: "{{ vault_app_admin_password }}"
 group_vars/all/vault.yml   → $ANSIBLE_VAULT;1.1;AES256 (cifrado)
 ```
@@ -1793,4 +1793,3 @@ ministrada por **Cris Apolinário**, na especialização em DevOps da CESAR Scho
 A aplicação hospedada é a
 [`getting-started-app`](https://github.com/docker/getting-started-app), exemplo
 oficial da documentação do Docker.
-
