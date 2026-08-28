@@ -382,15 +382,8 @@ passo obrigatório do roteiro de execução, e não um comando de depuração.
 | `local-exec` | Na máquina do operador | Alternativa aceita pelo enunciado (Opção B). Roda como parte do `terraform apply`: a configuração deixa de ser um passo que se repete sozinho, e uma falha do Ansible marca o recurso do Terraform como problemático |
 | **inventário dinâmico** | Etapas separadas | **Adotado nesta entrega.** Cada ferramenta roda por conta própria: reexecutar a configuração não exige tocar na infraestrutura, e uma falha do Ansible não marca recurso nenhum do Terraform |
 
-> [!NOTE]
-> **Idempotência não é privilégio da Opção A.** O Terraform é idempotente por
-> construção, e o enunciado cobra `changed=0` do Ansible em qualquer uma das
-> duas opções. A diferença está no custo de chegar lá: na Opção B, um segundo
-> `terraform apply` não reexecuta o playbook — o `null_resource` não mudou,
-> então o provisioner não dispara — e provar o `changed=0` do Ansible exigiria
-> rodar o playbook à parte assim mesmo, ou forçar a recriação do recurso.
-
-Não há **nenhum** bloco `provisioner` no código desta entrega:
+Esta entrega adotou a terceira linha, e o código não tem **nenhum** bloco
+`provisioner`:
 
 ```text
 $ grep -rn 'provisioner\|remote-exec' terraform --include='*.tf'
@@ -401,14 +394,33 @@ terraform/modules/docker-host/main.tf:3:# "remote-exec" -- everything inside the
 As duas únicas ocorrências estão num comentário explicando por que o padrão
 não é usado.
 
-#### O que acontece quando o Ansible falha dentro de um `local-exec`
+Manter o playbook fora do `terraform apply` muda duas coisas concretas: **o que
+custa rodar de novo** e **o que acontece quando o Ansible falha**. As duas
+seguem do mesmo fato — na Opção B o playbook é um passo de dentro do `apply`;
+na Opção A, um comando à parte.
 
-Ao terminar, o `ansible-playbook` devolve um **código de saída**, e é esse
-número que o Terraform observa.
+#### Rodar de novo
 
-**Se for zero**, o `apply` segue como se nada tivesse acontecido.
+Na Opção A é um comando: `ansible-playbook site.yml` outra vez, e o Terraform
+nem fica sabendo.
 
-**Se for qualquer outro valor**, três coisas acontecem em sequência:
+Na Opção B, não. Um segundo `terraform apply` **não** reexecuta o playbook — o
+`null_resource` não mudou, então o provisioner não dispara. Para provar o
+`changed=0` que o enunciado cobra, você acaba rodando o playbook à parte assim
+mesmo, ou forçando a recriação do recurso.
+
+> [!NOTE]
+> Idempotência não é privilégio da Opção A. O Terraform é idempotente por
+> construção, e o `changed=0` do Ansible é cobrado nas duas opções. O que muda
+> é o custo de chegar lá.
+
+#### Quando o Ansible falha
+
+Ao terminar, o `ansible-playbook` devolve um **código de saída** — e na Opção B
+é esse número que o Terraform observa.
+
+Zero, e o `apply` segue como se nada tivesse acontecido. Qualquer outro valor, e
+três coisas acontecem em sequência:
 
 1. o `apply` termina com erro;
 2. o recurso onde o provisioner está declarado é marcado como *tainted*;
@@ -417,11 +429,11 @@ número que o Terraform observa.
 
 O tamanho do estrago depende de onde o provisioner está declarado. Preso ao
 `aws_instance`, um erro de playbook custa **recriar a máquina inteira**. Num
-`null_resource` com `triggers`, como o enunciado sugere, recria apenas o
-recurso lógico, que não existe na AWS e não custa nada — motivo pelo qual essa
-é a montagem recomendada da Opção B.
+`null_resource` com `triggers`, como o enunciado sugere, recria só o recurso
+lógico, que não existe na AWS e não custa nada — é por isso que essa é a
+montagem recomendada da Opção B.
 
-Dá para contornar com `on_failure = continue`, que faz o Terraform registrar o
+Dá para desarmar com `on_failure = continue`, que faz o Terraform registrar o
 erro e seguir sem marcar nada:
 
 ```hcl
@@ -431,13 +443,13 @@ provisioner "local-exec" {
 }
 ```
 
-Mas isso troca uma falha barulhenta por uma silenciosa: o `apply` termina
-verde, o servidor fica sem configuração, e o problema reaparece mais tarde
-como "a aplicação não responde". Num fluxo em que o Ansible é a única coisa que
-instala software, é o pior negócio possível.
+Mas isso troca uma falha barulhenta por uma silenciosa: o `apply` termina verde,
+o servidor fica sem configuração, e o problema reaparece mais tarde como "a
+aplicação não responde". Num fluxo em que o Ansible é a única coisa que instala
+software, é o pior negócio possível.
 
-Nada disso se aplica à Opção A: o `ansible-playbook` é um comando próprio, e
-uma falha dele não tem como marcar recurso nenhum do Terraform.
+Na Opção A nada disso existe: o `ansible-playbook` é um comando próprio, e uma
+falha dele não tem como marcar recurso nenhum do Terraform.
 
 ---
 
