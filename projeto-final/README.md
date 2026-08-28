@@ -203,11 +203,6 @@ interpretar o erro no meio de um `apply`.
 > S3 e afins, mas não o STS. Uma chamada de EC2 é o que distingue "sessão viva"
 > de "sessão cancelada", e ela também pega a falta do `aws_session_token`.
 
-> [!TIP]
-> O ciclo completo — `apply` nos dois workspaces, Ansible, evidências e
-> `destroy` — cabe folgado numa sessão. Mas comece com a sessão recém-aberta,
-> não com uma que já está de pé há duas horas.
-
 As coleções e o `boto3` são a parte que costuma falhar em silêncio:
 
 ```bash
