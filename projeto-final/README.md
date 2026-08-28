@@ -32,7 +32,10 @@ responsabilidade do Ansible.
 - [Decisões de arquitetura](#decisões-de-arquitetura)
 - [Divergências em relação ao enunciado](#divergências-em-relação-ao-enunciado)
 - [Troubleshooting](#troubleshooting)
-- [Como as ferramentas funcionam](#como-as-ferramentas-funcionam)
+- [Como o Terraform funciona](#como-o-terraform-funciona)
+- [Anatomia dos arquivos `.tf`](#anatomia-dos-arquivos-tf)
+- [Como o Ansible funciona](#como-o-ansible-funciona)
+- [Anatomia dos arquivos do Ansible](#anatomia-dos-arquivos-do-ansible)
 - [Créditos](#créditos)
 
 > O [Início rápido](#início-rápido) é o caminho mais curto para ver a aplicação
@@ -1002,16 +1005,13 @@ imprime a quebra de linha que o terminal precisa para reconhecer o link.
 
 ---
 
-# Como as ferramentas funcionam
-
-Referência conceitual desta entrega: o que cada ferramenta faz, como ela decide
-o que fazer, e o passeio arquivo por arquivo pelo código desta entrega.
-
-As duas convergem para um estado desejado por caminhos opostos — o Terraform
-ordena o trabalho por um grafo de dependências e lembra do passado pelo state;
-o Ansible executa literalmente de cima para baixo e pergunta ao host toda vez.
-Ler as duas seções em sequência é o jeito mais rápido de ver onde uma termina e
-a outra começa.
+> **As quatro seções a seguir são a referência conceitual desta entrega**: o que
+> cada ferramenta faz, como ela decide o que fazer, e o passeio arquivo por
+> arquivo pelo código. As duas convergem para um estado desejado por caminhos
+> opostos — o Terraform ordena o trabalho por um grafo de dependências e lembra
+> do passado pelo state; o Ansible executa literalmente de cima para baixo e
+> pergunta ao host toda vez. Lê-las em sequência é o jeito mais rápido de ver
+> onde uma termina e a outra começa.
 
 ## Como o Terraform funciona
 
@@ -1785,7 +1785,7 @@ valor. Prefixar a variável cifrada com `vault_` deixa visível, em qualquer
 
 ---
 
-# Créditos
+## Créditos
 
 Disciplina de **Infraestrutura como Código (IaC) e Gerenciamento de Configuração**,
 ministrada por **Cris Apolinário**, na especialização em DevOps da CESAR School.
