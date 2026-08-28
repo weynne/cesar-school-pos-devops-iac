@@ -111,7 +111,7 @@ e credenciais AWS válidas. No **AWS Academy Learner Lab**, o bloco em
 ```bash
 terraform version                    # precisa ser >= 1.10
 aws configure set region us-east-1
-aws sts get-caller-identity          # se falhar aqui, nada abaixo funciona
+aws ec2 describe-regions >/dev/null  # se falhar aqui, nada abaixo funciona
 ```
 
 ### 2. Criar o seu bucket de state

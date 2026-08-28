@@ -49,9 +49,11 @@ tag `entrega-atividade-1`.
 │   ├── modules/                # network + web-server
 │   └── evidencias/
 ├── projeto-final/              # Terraform + Ansible: VPC + EC2 + container
-│   ├── README.md               # documentação completa da entrega
+│   ├── README.md               # manual de execução da entrega
+│   ├── Makefile                # embrulha os comandos do roteiro
 │   ├── terraform/              # provisiona a infraestrutura
 │   ├── ansible/                # configura o que roda dentro dela
+│   ├── docs/                   # como cada ferramenta funciona
 │   └── evidencias/
 ├── LICENSE
 └── README.md                   # este índice

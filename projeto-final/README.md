@@ -32,10 +32,8 @@ responsabilidade do Ansible.
 - [Decisões de arquitetura](#decisões-de-arquitetura)
 - [Divergências em relação ao enunciado](#divergências-em-relação-ao-enunciado)
 - [Troubleshooting](#troubleshooting)
-- [Como o Terraform funciona](#como-o-terraform-funciona)
-- [Anatomia dos arquivos `.tf`](#anatomia-dos-arquivos-tf)
-- [Como o Ansible funciona](#como-o-ansible-funciona)
-- [Anatomia dos arquivos do Ansible](#anatomia-dos-arquivos-do-ansible)
+- [Referência conceitual](#referência-conceitual) — como as duas ferramentas
+  funcionam, em [`docs/`](docs/)
 - [Créditos](#créditos)
 
 > O [Início rápido](#início-rápido) é o caminho mais curto para ver a aplicação
@@ -130,135 +128,51 @@ instância perguntando à API da EC2 quais máquinas têm aquelas tags.
 
 ## Início rápido
 
-O caminho mais curto do clone até a aplicação no ar, com todos os valores já
-preenchidos. Aqui só os comandos; o "porquê" de cada um está na
-[Execução](#execução) e nas seções seguintes.
+O caminho mais curto do clone até a aplicação no ar. O [`Makefile`](Makefile)
+embrulha o encanamento de shell — descoberta do interpretador do Ansible,
+consulta do IP público, troca de workspace. `make -n <alvo>` imprime o comando
+exato que cada um roda, e a [Execução](#execução) traz todos eles por extenso.
 
-**Pré-requisitos:** [Terraform ≥ 1.10](https://developer.hashicorp.com/terraform/install),
+**Antes de começar:** [Terraform ≥ 1.10](https://developer.hashicorp.com/terraform/install),
 [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/index.html)
 (testado no core 2.21),
 [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-e credenciais AWS válidas. No **AWS Academy Learner Lab**, o bloco em
-*AWS Details → AWS CLI* traz **três** chaves, incluindo o `aws_session_token`.
-
-Todos os comandos partem deste diretório:
+e credenciais AWS válidas em `us-east-1` — no Learner Lab são **três** valores,
+não dois. Os detalhes estão em [Credenciais AWS](#credenciais-aws).
 
 ```bash
 cd "$(git rev-parse --show-toplevel)/projeto-final"
+make help
 ```
 
-### 1. Conferir ferramentas e acesso
+### 1. Preparar a máquina
 
-```bash
-terraform version                    # precisa ser >= 1.10
-ansible --version
-aws configure set region us-east-1
-aws sts get-caller-identity          # se falhar aqui, nada abaixo funciona
-```
-
-### 2. Instalar as coleções e o `boto3`
-
-```bash
-cd ansible
-ansible-galaxy collection install -r requirements.yml
-
-# O boto3 tem que estar no MESMO interpretador que o Ansible usa:
-PY=$(ansible --version | sed -n 's/.*python version = .*(\(.*\))$/\1/p')
-"$PY" -c "import boto3, botocore; print('ok')"
-```
-
-Só siga quando esse comando imprimir `ok`. Se der `ModuleNotFoundError`,
-instale pelo método que corresponde à sua instalação do Ansible e repita:
-
-```bash
-pipx inject ansible boto3 botocore        # Ansible instalado via pipx
-"$PY" -m pip install boto3 botocore       # qualquer outra forma
-```
-
-> [!IMPORTANT]
-> Sem o `boto3` no interpretador certo, o inventário dinâmico volta **vazio** e
-> sem mensagem de erro — e o playbook termina em `ok=0`, que se parece com
-> sucesso.
-
-### 3. Gerar o par de chaves SSH
-
-O Terraform registra a chave pública na AWS; a privada nunca sai da sua máquina.
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/projeto-final -N "" -C "projeto-final-iac"
-```
-
-### 4. Recriar o vault
-
-O [`vault.yml`](ansible/group_vars/all/vault.yml) está versionado **cifrado**, e
-a senha que o abre não vem no clone. Como o valor protegido é uma senha de admin
-simulada, crie o cofre com a sua própria senha:
-
-```bash
-openssl rand -base64 32 > .vault_pass     # ainda dentro de ansible/
-chmod 600 .vault_pass
-
-rm group_vars/all/vault.yml
-printf 'vault_app_admin_password: "qualquer-valor-ficticio"\n' \
-  | ansible-vault encrypt --output group_vars/all/vault.yml -
-
-head -1 group_vars/all/vault.yml          # $ANSIBLE_VAULT;1.1;AES256
-```
-
-### 5. Criar o seu bucket de state
-
-O [`backend.tf`](terraform/backend.tf) aponta para o bucket desta entrega, que
-**não é acessível de fora**. Nomes de bucket são únicos na AWS inteira, então
-troque `SEU-NOME` por algo só seu:
+Uma vez só. Escolha um nome de bucket que seja seu — nomes são únicos na AWS
+inteira:
 
 ```bash
 export BUCKET="tfstate-projeto-final-SEU-NOME"
 
-# 1) Criar o bucket (us-east-1 é a única região que NÃO aceita
-#    --create-bucket-configuration):
-aws s3api create-bucket --bucket "$BUCKET" --region us-east-1
-
-# 2) Versionamento: permite recuperar um state corrompido:
-aws s3api put-bucket-versioning --bucket "$BUCKET" \
-  --versioning-configuration Status=Enabled
-
-# 3) O state guarda dados sensíveis em texto plano; bloqueie acesso público:
-aws s3api put-public-access-block --bucket "$BUCKET" \
-  --public-access-block-configuration \
-  "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
-
-# 4) E cifre em repouso:
-aws s3api put-bucket-encryption --bucket "$BUCKET" \
-  --server-side-encryption-configuration \
-  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+make check           # ferramentas instaladas e sessão AWS de pé
+make install-deps    # coleções Ansible + boto3 no interpretador certo
+make keypair         # par de chaves SSH que o Terraform vai registrar
+make vault           # .vault_pass e um vault.yml cifrado com senha nova
+make bucket          # bucket de state, com versionamento e cifragem
 ```
 
-### 6. Provisionar em `dev`
+> [!IMPORTANT]
+> Se `make install-deps` reclamar do `boto3`, ele imprime os dois comandos de
+> instalação possíveis e para. Rode o que corresponde à sua instalação do
+> Ansible e repita — sem o `boto3` no interpretador certo, o inventário
+> dinâmico volta **vazio e sem erro**, e o playbook termina em `ok=0`, que se
+> parece com sucesso.
 
-Só **duas** variáveis são obrigatórias. Troque o valor de `OWNER` e cole o
-bloco inteiro: ele resolve o seu IP público na hora e escreve o
-`terraform.tfvars` pronto.
-
-```bash
-cd ../terraform
-export OWNER="Seu Nome"
-
-cat > terraform.tfvars <<EOF
-owner            = "$OWNER"
-ssh_ingress_cidr = "$(curl -s https://checkip.amazonaws.com)/32"
-EOF
-
-terraform init -backend-config="bucket=$BUCKET"
-terraform workspace select -or-create dev
-terraform apply                      # espere: Plan: 13 to add
-```
-
-### 7. Configurar com o Ansible
+### 2. Provisionar e configurar em `dev`
 
 ```bash
-cd ../ansible
-ansible-inventory --graph            # tem que listar @role_docker_host
-ansible-playbook site.yml --limit env_dev
+make tfvars OWNER="Seu Nome"    # resolve o seu IP público e escreve o tfvars
+make init                       # terraform init apontando para o seu bucket
+make deploy-dev
 ```
 
 ```text
@@ -266,31 +180,40 @@ PLAY RECAP ***********************************************************
 ...dev-host-instance : ok=9  changed=8  unreachable=0  failed=0
 ```
 
-Rodar o mesmo `ansible-playbook` de novo, sem mudar nada, tem que devolver
-`changed=0`. É essa segunda execução que comprova a idempotência.
+`deploy-dev` chama três alvos em sequência: `apply-dev`, `inventory` e
+`configure-dev`. Continuam sendo três passos independentes — o Terraform não
+invoca o Ansible, o Makefile apenas os enfileira. É por isso que o próximo
+passo é um comando sozinho.
 
-### 8. Abrir a aplicação
+### 3. Provar a idempotência
+
+Sem mudar nada, nem código nem infraestrutura:
 
 ```bash
-cd ../terraform
-echo "$(terraform output -raw app_url)"        # pelo IP
-echo "$(terraform output -raw app_url_dns)"    # pelo DNS público
+make configure-dev
 ```
 
-O `echo` acrescenta a quebra de linha que o `-raw` omite, deixando a URL
-clicável no terminal. As duas carregam a porta `3000` explicitamente: o
-Security Group não abre a 80.
+```text
+PLAY RECAP ***********************************************************
+...dev-host-instance : ok=9  changed=0  unreachable=0  failed=0
+```
 
-### 9. Repetir em `prod` e destruir os dois
+### 4. Abrir a aplicação
 
 ```bash
-terraform workspace select -or-create prod
-terraform apply
-cd ../ansible && ansible-playbook site.yml --limit env_prod
+make url     # imprime as duas URLs, pelo IP e pelo DNS
+make open    # abre a primeira no navegador
+```
 
-cd ../terraform
-terraform workspace select prod && terraform destroy
-terraform workspace select dev  && terraform destroy
+As URLs carregam a porta `3000` explicitamente: o Security Group não abre a 80.
+
+### 5. Repetir em `prod` e destruir os dois
+
+```bash
+make deploy-prod
+
+make destroy-prod
+make destroy-dev
 ```
 
 O bucket do backend não é destruído: ele pertence a outro ciclo de vida e guarda
@@ -472,12 +395,19 @@ No **AWS Academy Learner Lab**, o bloco em *AWS Details → AWS CLI* traz
 
 ```bash
 aws configure set region us-east-1
-aws sts get-caller-identity     # se falhar aqui, nada abaixo funciona
+aws sts get-caller-identity          # quem eu sou
+aws ec2 describe-regions >/dev/null  # eu posso mexer na EC2?
 ```
 
 A sessão do lab expira em **3 a 4 horas** e as credenciais mudam a cada
-reinício. Rode o `get-caller-identity` antes de cada bloco de comandos: é
-mais rápido que interpretar o erro no meio de um `apply`.
+reinício. Rode a checagem antes de cada bloco de comandos: é mais rápido que
+interpretar o erro no meio de um `apply`.
+
+> [!WARNING]
+> **Só o `get-caller-identity` não serve como checagem.** Quando a sessão do
+> lab termina, ele continua respondendo `200` — o `voc-cancel-cred` nega EC2,
+> S3 e afins, mas não o STS. Uma chamada de EC2 é o que distingue "sessão viva"
+> de "sessão cancelada", e ela também pega a falta do `aws_session_token`.
 
 > [!TIP]
 > O ciclo completo — `apply` nos dois workspaces, Ansible, evidências e
@@ -560,8 +490,16 @@ O [`vault.yml`](ansible/group_vars/all/vault.yml) está versionado
 abre vive em `.vault_pass`, que está no `.gitignore` e não vem no clone. Sem
 ela, qualquer `ansible-playbook` falha na decifragem.
 
+O que **vem** no clone é o
+[`.vault_pass.example`](ansible/.vault_pass.example), e ele mostra o formato:
+uma linha, só a senha, sem comentário nenhum — o arquivo inteiro *é* a senha.
+
 Como o valor protegido é uma **senha de admin simulada**, que não dá acesso a
-nada, recrie o cofre com a sua própria senha.
+nada, recrie o cofre com a sua própria senha. Um alvo faz as duas coisas:
+
+```bash
+make vault
+```
 
 > [!NOTE]
 > Se preferir acessar o cofre deste repositório em vez de criar o seu, envie um
@@ -569,7 +507,7 @@ nada, recrie o cofre com a sua própria senha.
 > versionada de propósito: publicar a senha ao lado do arquivo que ela decifra
 > anularia a proteção do `ansible-vault`.
 
-Para criar o seu:
+À mão, é isto que o alvo faz:
 
 ```bash
 cd ansible
@@ -620,6 +558,11 @@ EOF
 
 `terraform.tfvars` está no `.gitignore`: ele guarda o IP de quem executa.
 O IP residencial muda; reconfirme antes de cada `apply`.
+
+Para preencher à mão em vez de gerar, o
+[`terraform.tfvars.example`](terraform/terraform.tfvars.example) traz todas as
+variáveis comentadas, obrigatórias e opcionais:
+`cp terraform.tfvars.example terraform.tfvars`.
 
 ### 2. Backend e workspace
 
@@ -752,33 +695,11 @@ guarda o histórico do state. Apague manualmente se não for mais usá-lo.
 
 ## Evidências
 
-Todas em [`evidencias/`](evidencias/), na ordem em
-que foram geradas. Os `.md` são saída de terminal; os `.png` são capturas de
-navegador e do console da AWS.
-
-| # | Arquivo | O que prova |
-| --- | --- | --- |
-| 01 | `evidencia_01-tf_fmt_validate_init_workspace_dev.png` | `fmt`, `validate` e `init` limpos, workspace `dev` selecionado |
-| 02 | `evidencia_02-tf_apply_dev.md` | 13 recursos criados em `dev` |
-| 03 | `evidencia_03-ansible_inventory_dynamic_dev.md` | O plugin descobriu a instância e gerou `role_docker_host` e `env_dev` |
-| 04 | `evidencia_04-ansible_playbook_dev.md` | 1ª execução: `ok=9 changed=8` |
-| 05 | `evidencia_05-ansible_playbook_idempotencia_dev.md` | **2ª execução: `ok=9 changed=0`** |
-| 06 | `evidencia_06-webapp_ip_dev.png` | Aplicação no navegador pelo IP, com um item na lista |
-| 07 | `evidencia_07-webapp_dns_dev.png` | A mesma aplicação pelo DNS público |
-| 08 | `evidencia_08-ssh_docker_ps_dev.png` | `docker ps` no host, container em execução |
-| 09 | `evidencia_09-tf_workspace_prod.png` | Troca de workspace |
-| 10 | `evidencia_10-tf_apply_prod.md` | 13 recursos criados em `prod` |
-| 11 | `evidencia_11-ansible_inventory_dynamic_prod.md` | Descoberta do host de `prod` |
-| 12 | `evidencia_12-ansible_playbook_prod_ssh_timeout.md` | Tentativa que falhou por `sshd` ainda subindo — ver [Troubleshooting](#troubleshooting) |
-| 13 | `evidencia_13-ansible_playbook_prod.md` | Execução completa em `prod` |
-| 14 | `evidencia_14-ansible_playbook_idempotencia_prod.md` | **`ok=9 changed=0` em `prod`** |
-| 15 | `evidencia_15-webapp_ip_prod.png` | Aplicação de `prod` pelo IP |
-| 16 | `evidencia_16-webapp_dns_prod.png` | Aplicação de `prod` pelo DNS |
-| 17 | `evidencia_17-ssh_docker_ps_prod.png` | Container rodando no host de `prod` |
-| 18 | `evidencia_18-s3_backend_workspaces.png` | Os dois objetos de state lado a lado no bucket |
-| 19 | `evidencia_19-tf_destroy_prod.md` | `Destroy complete! Resources: 13 destroyed` |
-| 20 | `evidencia_20-tf_destroy_dev.md` | `Destroy complete! Resources: 13 destroyed` |
-| 21 | `evidencia_21-ansible_vault_cifrado.md` | Vault cifrado, consumido por indireção e com a senha fora do Git |
+As 21 evidências da execução completa — `apply` e `destroy` nos dois workspaces,
+as duas execuções do playbook que provam o `changed=0`, a aplicação no navegador
+pelo IP e pelo DNS, e o vault cifrado — estão em
+**[`evidencias/`](evidencias/README.md)**, com uma tabela dizendo o que cada
+arquivo prova.
 
 > O IP residencial do operador aparece como `203.0.113.42/32` (RFC 5737) e o
 > ID da conta como `123456789012`. O que a evidência prova — porta 22 restrita
@@ -790,6 +711,7 @@ navegador e do console da AWS.
 
 ```text
 projeto-final/
+├── Makefile                    # embrulha os comandos do roteiro de execução
 ├── terraform/
 │   ├── backend.tf              # backend S3, key própria desta entrega
 │   ├── versions.tf             # required_version + required_providers
@@ -798,6 +720,7 @@ projeto-final/
 │   ├── variables.tf            # entradas do projeto
 │   ├── main.tf                 # guard, key pair e composição dos módulos
 │   ├── outputs.tf              # IP, DNS, app_url, ssh_command
+│   ├── terraform.tfvars.example  # modelo comentado; copie e preencha
 │   └── modules/
 │       ├── network/            # VPC, subnet, IGW, rota, associação
 │       └── docker-host/        # Security Group, regras e a EC2 crua
@@ -805,6 +728,7 @@ projeto-final/
 │   ├── ansible.cfg             # inventário, usuário, chave, vault
 │   ├── requirements.yml        # amazon.aws + community.docker
 │   ├── site.yml                # aplica as roles, nesta ordem
+│   ├── .vault_pass.example     # modelo da senha do cofre; a real não é versionada
 │   ├── inventory/
 │   │   └── aws_ec2.yml         # inventário dinâmico (a integração)
 │   ├── group_vars/all/
@@ -813,7 +737,11 @@ projeto-final/
 │   └── roles/
 │       ├── docker/             # engine, daemon, grupo do usuário
 │       └── app/                # clone, Dockerfile, build, container
+├── docs/
+│   ├── terraform.md            # como o Terraform funciona + anatomia dos .tf
+│   └── ansible.md              # como o Ansible funciona + anatomia das roles
 └── evidencias/
+    └── README.md               # tabela das 21 evidências
 ```
 
 O que veio da Atividade 1 e o que mudou está detalhado na seção seguinte.
@@ -1027,783 +955,22 @@ imprime a quebra de linha que o terminal precisa para reconhecer o link.
 
 ---
 
-> **As quatro seções a seguir são a referência conceitual desta entrega**: o que
-> cada ferramenta faz, como ela decide o que fazer, e o passeio arquivo por
-> arquivo pelo código. As duas convergem para um estado desejado por caminhos
-> opostos — o Terraform ordena o trabalho por um grafo de dependências e lembra
-> do passado pelo state; o Ansible executa literalmente de cima para baixo e
-> pergunta ao host toda vez. Lê-las em sequência é o jeito mais rápido de ver
-> onde uma termina e a outra começa.
+## Referência conceitual
 
-## Como o Terraform funciona
+O que cada ferramenta faz, como ela decide o que fazer, e o passeio arquivo por
+arquivo pelo código desta entrega ficam em dois documentos à parte, para este
+README continuar sendo o manual de execução:
 
-O Terraform é **declarativo**: descrevemos o *estado desejado* em arquivos `.tf`.
-Ele compara esse desejo com o **state** (o registro do que já foi criado) e
-calcula o conjunto mínimo de mudanças para convergir os dois.
-
-```mermaid
-flowchart LR
-    Code["📄 Arquivos .tf<br/>estado desejado"]
-    State[("📦 State no S3<br/>estado conhecido")]
-    Cloud["☁️ AWS<br/>estado real"]
-
-    Code -->|"terraform plan"| Diff{"🔍 Diff"}
-    State --> Diff
-    Cloud -->|refresh| State
-    Diff -->|"terraform apply"| Cloud
-    Cloud -->|atualiza| State
-```
-
-| Comando | O que faz |
+| Documento | O que traz |
 | --- | --- |
-| `terraform init` | Baixa providers e conecta no backend. Obrigatório após mexer em `module` ou `backend` |
-| `terraform validate` | Checa sintaxe e tipos **sem** acessar a AWS |
-| `terraform fmt` | Formata `.tf` e `.tfvars` no padrão canônico |
-| `terraform plan` | Mostra o diff entre código, state e realidade |
-| `terraform apply` | Executa o diff |
-| `terraform destroy` | Remove tudo que está no state do workspace atual |
-
-> [!IMPORTANT]
-> **Por que o state é remoto.** O `terraform.tfstate` local não é compartilhável,
-> morre junto com a máquina e guarda dados sensíveis em texto plano no diretório de
-> trabalho. O S3 resolve durabilidade e compartilhamento; o **lock** resolve
-> concorrência, porque dois `apply` simultâneos sobre o mesmo state corrompem a infra.
-
-Este projeto usa `use_lockfile = true`, o lock **nativo do S3** disponível a partir
-do Terraform 1.10. Ele cria um objeto `.tflock` ao lado do state durante a operação.
-A tabela DynamoDB exigida em materiais mais antigos não é necessária.
-
-**Referências oficiais:**
-
-- [Backend S3 e state locking][backend-s3]
-- [Workspaces][workspaces-docs]
-- [Módulos][modules-docs]
-
-[backend-s3]: https://developer.hashicorp.com/terraform/language/backend/s3
-[workspaces-docs]: https://developer.hashicorp.com/terraform/language/state/workspaces
-[modules-docs]: https://developer.hashicorp.com/terraform/language/modules
-
----
-
-## Anatomia dos arquivos `.tf`
-
-Sete arquivos na raiz de `terraform/` e dois módulos. A separação
-não é exigência do Terraform — ele lê todos os `.tf` do diretório como se
-fossem um só — mas é o que permite abrir o arquivo certo quando algo muda.
-
-### A ordem dos arquivos não existe
-
-Os nomes `main.tf`, `variables.tf` e `outputs.tf` são **convenção para humanos**.
-Um único arquivo com tudo dentro funcionaria igual, só que ilegível. E um
-`local` definido em `locals.tf` é usado em `main.tf` sem nenhum `import`: o que
-existe é o **grafo de dependências**, não a ordem de leitura.
-
-### Os blocos usados neste projeto
-
-| Bloco | Arquivo | Papel | O que pode referenciar |
-| --- | --- | --- | --- |
-| `terraform` | `versions.tf`, `backend.tf` | Versões e onde mora o state | nada (só literais) |
-| `provider` | `providers.tf` | Como falar com a AWS | `var`, `local`, `terraform.workspace` |
-| `variable` | `variables.tf` | Entrada do usuário | nada, exceto `var.*` na `validation` |
-| `locals` | `locals.tf` | Valor derivado | `var`, outros `local`, `terraform.workspace` |
-| `resource` | `main.tf`, módulos | Cria algo na AWS | tudo |
-| `module` | `main.tf` | Compõe um conjunto de recursos | tudo |
-| `output` | `outputs.tf` | Devolve valor a quem executa | tudo |
-
-### Arquivo por arquivo
-
-<details>
-<summary><b>1. <code>versions.tf</code></b>: o contrato de versões</summary>
-
-```hcl
-terraform {
-  required_version = ">= 1.10.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
-    }
-  }
-}
-```
-
-O piso `1.10` não é decorativo: é a versão que introduziu o `use_lockfile` do
-backend S3, usado no arquivo seguinte. O `~> 6.0` aceita `6.x` e recusa `7.0`,
-para uma major nova do provider não quebrar o projeto sem decisão explícita.
-
-A versão **exata** que foi usada fica no `.terraform.lock.hcl`, versionado junto.
-Este arquivo diz o que é aceitável; o lock diz o que aconteceu.
-
-</details>
-
-<details>
-<summary><b>2. <code>backend.tf</code></b>: onde o state mora</summary>
-
-```hcl
-terraform {
-  backend "s3" {
-    bucket       = "tfstate-pos-devops-iac-weynne-2026"
-    key          = "projeto-final/terraform.tfstate"
-    region       = "us-east-1"
-    encrypt      = true
-    use_lockfile = true
-  }
-}
-```
-
-A `key` é o dado mais importante do arquivo: ela é distinta da usada pela
-Atividade 1. Mesmo bucket, um state por entrega — reaproveitar a key faria o
-primeiro `apply` daqui sobrescrever o state de uma entrega já avaliada.
-
-Nenhum valor aqui pode ser `var`: o backend é lido **antes** de qualquer
-variável existir, então só aceita literais. Para apontar para outro bucket,
-use `terraform init -backend-config="bucket=..."`.
-
-`use_lockfile = true` é o lock nativo do S3, que cria um objeto `.tflock` ao
-lado do state durante a operação. A tabela DynamoDB exigida em materiais mais
-antigos não é necessária.
-
-</details>
-
-<details>
-<summary><b>3. <code>providers.tf</code></b>: como falar com a AWS</summary>
-
-```hcl
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      Environment = terraform.workspace
-      Project     = var.project_name
-      Owner       = var.owner
-      ManagedBy   = "Terraform"
-    }
-  }
-}
-```
-
-Nenhuma credencial aqui, nunca. O provider resolve por ambiente,
-`~/.aws/credentials` ou metadata da instância, nessa ordem.
-
-O `default_tags` aplica as quatro tags a **todo** recurso taggável, inclusive
-os criados dentro dos módulos. Nesta entrega isso deixou de ser só organização:
-`Project` e `Environment` são o que o inventário dinâmico do Ansible consulta
-para achar a máquina. O `Name` fica de fora de propósito — ele difere por
-recurso e é mesclado em cada um.
-
-</details>
-
-<details>
-<summary><b>4. <code>variables.tf</code></b>: a superfície de entrada</summary>
-
-Sete variáveis; apenas `owner` e `ssh_ingress_cidr` são obrigatórias. Todo o
-resto tem default versionado, então um clone novo roda com dois valores.
-
-```hcl
-variable "app_port" {
-  description = "TCP port exposed publicly by the container"
-  type        = number
-  default     = 3000
-}
-
-variable "public_key_path" {
-  description = "Path to the SSH public key registered as the EC2 key pair. Generate the pair with: ssh-keygen -t ed25519 -f ~/.ssh/projeto-final"
-  type        = string
-  default     = "~/.ssh/projeto-final.pub"
-}
-```
-
-Repare no padrão das `description`: as boas dizem o que o nome não diz. A do
-`public_key_path` traz o comando que **produz** o valor; a do
-`ssh_ingress_cidr` traz o `curl` que descobre o IP. Uma description que apenas
-repete o nome da variável é espaço desperdiçado.
-
-`project_name` merece atenção: seu valor alimenta o prefixo de nome de todo
-recurso **e** a tag `Project` que o Ansible filtra. Mudá-lo aqui sem mudar o
-`aws_ec2.yml` faz o inventário voltar vazio.
-
-</details>
-
-<details>
-<summary><b>5. <code>locals.tf</code></b>: o que é derivado, não informado</summary>
-
-```hcl
-locals {
-  environment = terraform.workspace
-
-  environment_config = {
-    default = { instance_type = "t3.micro", vpc_cidr = "10.0.0.0/16" }
-    dev     = { instance_type = "t3.micro", vpc_cidr = "10.10.0.0/16" }
-    prod    = { instance_type = "t3.micro", vpc_cidr = "10.20.0.0/16" }
-  }
-
-  config      = local.environment_config[local.environment]
-  name_prefix = "${var.project_name}-${local.environment}"
-}
-```
-
-É o único lugar que decide o que difere entre ambientes. `variables.tf` recebe
-o que o usuário informa; `locals.tf` calcula o que é consequência.
-
-O índice direto (`local.environment_config[local.environment]`) em vez de
-`lookup()` com default é proposital: um workspace fora do mapa é sempre erro, e
-deve falhar alto em vez de silenciosamente cair num valor genérico.
-
-`name_prefix` carrega o workspace, e é isso que torna o nome do key pair único
-por ambiente — nomes de key pair são únicos por região, não por workspace.
-
-</details>
-
-<details>
-<summary><b>6. <code>main.tf</code></b>: a composição</summary>
-
-Três coisas: o guard, o par de chaves e os dois módulos.
-
-```hcl
-resource "terraform_data" "workspace_guard" {
-  lifecycle {
-    precondition {
-      condition     = contains(["dev", "prod"], terraform.workspace)
-      error_message = "Refusing to run in workspace '${terraform.workspace}'..."
-    }
-  }
-}
-```
-
-`terraform_data` é built-in: sem provider, sem recurso na nuvem, sem custo.
-A `precondition` é avaliada no **plan**, então bloqueia o `apply` sem impedir
-que `terraform validate` passe limpo.
-
-```hcl
-resource "aws_key_pair" "this" {
-  key_name   = "${local.name_prefix}-key"
-  public_key = file(pathexpand(var.public_key_path))
-}
-```
-
-Só a metade pública chega à AWS: a privada fica em `~/.ssh` e nunca entra no
-state. `pathexpand()` é obrigatório — `file()` não expande `~` sozinho.
-
-```hcl
-module "docker_host" {
-  source = "./modules/docker-host"
-
-  vpc_id    = module.network.vpc_id
-  subnet_id = module.network.public_subnet_id
-  key_name  = aws_key_pair.this.key_name
-  # ...
-}
-```
-
-Não há `depends_on` em lugar nenhum. Referenciar `module.network.vpc_id` e
-`aws_key_pair.this.key_name` **é** a declaração de dependência: o Terraform
-infere a ordem do grafo. `depends_on` só é necessário quando existe dependência
-real sem referência no código.
-
-</details>
-
-<details>
-<summary><b>7. <code>outputs.tf</code></b>: o que o projeto devolve</summary>
-
-```hcl
-output "app_url" {
-  value = "http://${module.docker_host.public_ip}:${var.app_port}"
-}
-
-output "app_url_dns" {
-  value = "http://${module.docker_host.public_dns}:${var.app_port}"
-}
-
-output "ssh_command" {
-  value = "ssh -i ${trimsuffix(var.public_key_path, ".pub")} ec2-user@${module.docker_host.public_ip}"
-}
-```
-
-As duas URLs carregam a porta explicitamente porque o Security Group abre
-apenas 22 e 3000: um endereço sem `:3000` cai na 80 e resulta em timeout.
-
-`ssh_command` deriva o caminho da chave privada de `public_key_path` com
-`trimsuffix`, em vez de repetir o caminho — assim o comando não tem como
-divergir da chave que a instância de fato aceita.
-
-`workspace` e `instance_type` existem para que cada log de `apply`/`destroy`
-se identifique sozinho, o que importa quando a saída vira evidência.
-
-</details>
-
-<details>
-<summary><b>8. <code>modules/network/</code></b>: VPC, subnet e saída para a internet</summary>
-
-Reaproveitado da Atividade 1 sem uma linha de diferença. Cria VPC, subnet
-pública, Internet Gateway, route table, rota e associação.
-
-```hcl
-resource "aws_vpc" "this" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-}
-```
-
-Os dois `enable_dns_*` são `false` por padrão numa VPC customizada. Sem
-`enable_dns_hostnames`, `aws_instance.public_dns` volta **vazio** — e o
-`app_url_dns` deixaria de funcionar sem nenhuma mensagem de erro.
-
-A subnet sai de `cidrsubnet(var.vpc_cidr, 8, 0)`: `/16` + 8 bits = `/24`.
-
-> A `aws_route_table_association` é o que de fato torna a subnet pública.
-> Sem ela o `apply` termina com sucesso, todos os recursos existem, e nada
-> responde.
-
-</details>
-
-<details>
-<summary><b>9. <code>modules/docker-host/</code></b>: firewall, chave e a instância crua</summary>
-
-Deriva do `web-server` da Atividade 1. O cabeçalho do arquivo declara a
-decisão que o define:
-
-```hcl
-# A bare host on purpose: no user_data, no packages, no application. Terraform
-# installing software mixes the same responsibilities as provisioner
-# "remote-exec" -- everything inside the instance belongs to Ansible.
-```
-
-Security Group com três regras separadas — SSH restrito ao `/32` do operador,
-`app_port` aberta e egress liberado:
-
-```hcl
-resource "aws_vpc_security_group_ingress_rule" "app" {
-  from_port   = var.app_port
-  to_port     = var.app_port
-  ip_protocol = "tcp"
-  cidr_ipv4   = "0.0.0.0/0"
-}
-```
-
-Regras como recursos separados, e não blocos `ingress` embutidos: alterar uma
-regra não recria o grupo inteiro.
-
-A instância:
-
-```hcl
-resource "aws_instance" "this" {
-  ami           = data.aws_ssm_parameter.ami.insecure_value
-  instance_type = var.instance_type
-  key_name      = var.key_name
-
-  metadata_options {
-    http_endpoint = "enabled"
-    http_tokens   = "required"      # IMDSv2 obrigatório
-  }
-
-  root_block_device {
-    encrypted   = true
-    volume_type = "gp3"
-  }
-
-  tags = merge(var.tags, {
-    Name = "${var.name_prefix}-host-instance"
-    Role = "docker-host"
-  })
-}
-```
-
-Nenhum `user_data`. A AMI vem do SSM Parameter Store, sempre a última Amazon
-Linux 2023, e `insecure_value` em vez de `value` porque `.value` é marcado como
-sensível mesmo para parâmetros públicos — o que esconderia o ID da AMI no plano
-que vira evidência.
-
-A tag `Role` é a única linha deste módulo que existe por causa do Ansible.
-
-</details>
-
----
-
-## Como o Ansible funciona
-
-O Ansible é **imperativo na ordem, declarativo no resultado**: você escreve
-tasks numa sequência que é executada de cima para baixo, mas cada task descreve
-um *estado desejado* — "o pacote deve estar presente", "o serviço deve estar
-rodando" — e não um comando a executar. É dessa distinção que nasce a
-idempotência: rodar duas vezes não faz o trabalho duas vezes.
-
-Ele é **agentless**: nada é instalado no servidor. A máquina de controle abre
-uma sessão SSH, copia um módulo Python para um diretório temporário no host,
-executa, coleta o resultado em JSON e apaga o módulo.
-
-```mermaid
-flowchart LR
-    CN["💻 Máquina de controle<br/>site.yml + roles"]
-    INV["🔎 inventory/aws_ec2.yml<br/>consulta a API da EC2"]
-    SSH{{"🔐 SSH"}}
-    HOST["🖥️ Host gerenciado<br/>python3 + módulo temporário"]
-
-    CN -->|"quais hosts?"| INV
-    INV -->|"IP + grupos"| CN
-    CN --> SSH --> HOST
-    HOST -->|"JSON: ok / changed / failed"| CN
-```
-
-| Comando | O que faz |
-| --- | --- |
-| `ansible-galaxy collection install -r requirements.yml` | Instala as coleções declaradas |
-| `ansible-inventory --graph` | Mostra os grupos e hosts **sem** conectar em nenhum |
-| `ansible-playbook --syntax-check site.yml` | Valida YAML e resolução de roles, offline |
-| `ansible-playbook site.yml --limit env_dev` | Executa, restrito a um grupo |
-| `ansible-playbook site.yml --check` | Simula: relata o que mudaria sem mudar |
-| `ansible-vault encrypt \| view \| edit` | Cifra, lê e edita arquivos de segredo |
-
-> [!IMPORTANT]
-> **Por que a idempotência é o critério.** Um script `bash` que roda
-> `dnf install docker` funciona na primeira vez e é ruído na segunda. Um módulo
-> idempotente consulta o estado atual antes de agir e só reporta `changed`
-> quando de fato alterou algo. É por isso que a segunda execução deste playbook
-> termina com `changed=0`, e é por isso que `command`/`shell` são evitados: eles
-> não sabem consultar estado, então são sempre `changed`.
-
-**O contraste com o Terraform.** As duas ferramentas convergem para um estado
-desejado, mas por caminhos opostos:
-
-| | Terraform | Ansible |
-| --- | --- | --- |
-| Conhece o passado | Sim, pelo **state** | Não: consulta o host a cada execução |
-| Ordem de execução | Derivada do **grafo** de dependências | **Literal**, de cima para baixo |
-| Se você apagar um recurso do código | Ele é destruído | Nada acontece: a task deixa de existir |
-| Escopo | O que está *em volta* da máquina | O que está *dentro* da máquina |
-
-A terceira linha é a mais importante na prática: remover uma task do playbook
-**não desfaz** o que ela fez. Desinstalar exige uma task explícita com
-`state: absent`.
-
-**Referências oficiais:**
-
-- [Módulos e idempotência][ans-idem]
-- [Plugin de inventário `aws_ec2`][ans-aws-ec2]
-- [Ansible Vault][ans-vault]
-
-[ans-idem]: https://docs.ansible.com/ansible/latest/reference_appendices/glossary.html#term-Idempotency
-[ans-aws-ec2]: https://docs.ansible.com/ansible/latest/collections/amazon/aws/aws_ec2_inventory.html
-[ans-vault]: https://docs.ansible.com/ansible/latest/vault_guide/index.html
-
----
-
-## Anatomia dos arquivos do Ansible
-
-### A ordem das tasks é literal
-
-No Terraform, a ordem dos arquivos e dos blocos é irrelevante — o grafo de
-dependências decide. No Ansible é o oposto: **a ordem em que você escreve é a
-ordem em que executa**, e não há grafo para consertar um encadeamento errado.
-
-É por isso que `site.yml` aplica `docker` antes de `app`: a role `app` chama
-módulos que conversam com o daemon do Docker, e o daemon precisa estar de pé.
-Inverter as duas linhas não gera erro de sintaxe — gera falha em execução.
-
-Dentro de uma role, a ordem também é literal. As três tasks de `docker`
-instalam, sobem o serviço e ajustam o grupo, nessa sequência, porque `dnf
-install` não inicia serviço e `systemd` não instala pacote.
-
-### Os módulos usados neste projeto
-
-| Módulo | Onde | O que garante |
-| --- | --- | --- |
-| `ansible.builtin.dnf` | ambas as roles | Pacote presente (`state: present`, não `latest`) |
-| `ansible.builtin.systemd_service` | `docker` | Serviço rodando **e** habilitado no boot |
-| `ansible.builtin.user` | `docker` | Usuário no grupo `docker`, com `append: true` |
-| `ansible.builtin.git` | `app` | Repositório clonado na revisão pedida |
-| `ansible.builtin.template` | `app` | Dockerfile renderizado a partir do `.j2` |
-| `community.docker.docker_image` | `app` | Imagem construída, se ainda não existir |
-| `community.docker.docker_container` | `app` | Container rodando com a configuração descrita |
-
-Todos usam **FQCN** (`namespace.coleção.módulo`). Nome curto (`dnf:`) ainda
-funciona, mas depende da resolução implícita de coleções — o nome completo
-torna explícito de onde o módulo vem.
-
-Não há **nenhum** `command` ou `shell` no projeto:
-
-```text
-$ grep -rn 'ansible.builtin.command\|ansible.builtin.shell' ansible
-$ echo $?
-1
-```
-
-### Arquivo por arquivo: a raiz do `ansible/`
-
-<details>
-<summary><b>1. <code>ansible.cfg</code></b>: como conectar, sem repetir flags</summary>
-
-```ini
-[defaults]
-inventory = inventory/aws_ec2.yml
-remote_user = ec2-user
-private_key_file = ~/.ssh/projeto-final
-host_key_checking = False
-deprecation_warnings = False
-vault_password_file = .vault_pass
-```
-
-Sem ele, cada execução precisaria repetir `-i`, `-u` e `--private-key` na linha
-de comando. Dois detalhes que economizam depuração:
-
-- Caminhos relativos aqui resolvem **em relação ao arquivo de configuração**,
-  não ao diretório de onde você chama o comando.
-- `vault_password_file` apontando para um arquivo inexistente **aborta**
-  qualquer comando, inclusive `--syntax-check`. Ele não é ignorado.
-
-</details>
-
-<details>
-<summary><b>2. <code>requirements.yml</code></b>: do que o projeto depende</summary>
-
-```yaml
-collections:
-  - name: amazon.aws          # plugin de inventário aws_ec2
-    version: ">=11.4.0,<12.0.0"
-
-  - name: community.docker    # docker_image, docker_container
-    version: ">=5.2.1,<6.0.0"
-```
-
-Declara o que o projeto precisa para rodar em outra máquina. É o equivalente ao
-`required_providers` do Terraform, com uma diferença importante: o Ansible
-**não tem** arquivo de lock. Sem a restrição de versão, um clone novo instala o
-que estiver publicado no dia.
-
-E isso não é risco teórico. A `community.docker` já removeu o SDK `docker-py`
-numa virada de major, e a documentação atual dela recomenda trocar o
-`docker_image` pelos módulos separados — ou seja, uma major nova pode retirar
-exatamente o que a role `app` chama. As faixas acima aceitam correções dentro
-da major testada e barram a próxima.
-
-</details>
-
-<details>
-<summary><b>3. <code>site.yml</code></b>: onde, com que privilégio e o quê</summary>
-
-```yaml
-- name: Configure the docker host
-  hosts: role_docker_host
-  become: true
-  gather_facts: true
-
-  roles:
-    - docker
-    - app
-```
-
-Seis linhas, nenhuma task solta. O playbook responde três perguntas — **onde**
-(`hosts`), **com que privilégio** (`become`) e **o quê** (`roles`) — e delega o
-*como* às roles. Quem abre este arquivo entende a entrega em cinco segundos.
-
-`become: true` no play, e não em cada task, porque as sete tasks precisam de
-root. `gather_facts: true` custa uma conexão a mais e popula `ansible_facts`.
-
-</details>
-
-<details>
-<summary><b>4. <code>inventory/aws_ec2.yml</code></b>: a costura com o Terraform</summary>
-
-O arquivo da integração, detalhado em
-[A integração Terraform → Ansible](#a-integração-terraform--ansible). Três
-regras que não são óbvias:
-
-1. O nome do arquivo **precisa** terminar em `aws_ec2.yml` ou `aws_ec2.yaml`;
-   qualquer outro nome é ignorado sem mensagem de erro.
-2. O plugin roda no Python do Ansible e exige `boto3`/`botocore` **nesse mesmo
-   ambiente** — num Ansible instalado por `pipx`, um `pip install boto3` comum
-   não é enxergado.
-3. `compose: ansible_host: public_ip_address` é obrigatório: sem ele o plugin
-   entrega o DNS privado, que não resolve fora da VPC.
-
-</details>
-
-### O contrato de uma role
-
-Uma role é uma pasta com nomes fixos. O Ansible carrega cada subpasta
-automaticamente pelo nome — não existe arquivo declarando caminhos.
-
-```text
-roles/docker/
-├── tasks/main.yml        # o que fazer, na ordem em que executa
-├── defaults/main.yml     # valores que quem usa a role PODE sobrescrever
-├── vars/main.yml         # valores internos, que NÃO deveriam ser trocados
-└── meta/main.yml         # autor, licença, plataformas, dependências
-```
-
-A distinção entre `defaults/` e `vars/` é a parte que mais confunde, e ela não é
-sobre onde o valor mora — é sobre **prioridade**:
-
-| | `defaults/main.yml` | `vars/main.yml` |
-| --- | --- | --- |
-| Prioridade | A mais baixa de todas | Alta |
-| Intenção | "Troque se precisar" | "Isto é lógica interna da role" |
-| Neste projeto | `app_node_image`, `app_port`, URL do repositório | nome do pacote `docker`, `/opt/getting-started-app` |
-
-A pergunta que decide onde colocar uma variável: *se alguém sobrescrever isto de
-fora, a role continua correta?* Se sim, `defaults/`. Se a role quebra, `vars/`.
-
-Duas pastas que o `ansible-galaxy init` cria e que este projeto **não** usa
-foram removidas: `handlers/` (não há serviço a recarregar depois de um template
-mudar) e `tests/` (destinada a publicação no Galaxy).
-
-Toda variável leva o nome da role como prefixo — `docker_packages`,
-`app_container_name`. Variáveis de role vivem num espaço de nomes global: sem o
-prefixo, um `packages` da role `docker` colidiria com um `packages` da role
-`app`, e a última carregada venceria em silêncio.
-
-### Arquivo por arquivo: as roles
-
-<details>
-<summary><b>5. <code>roles/docker</code></b>: o host pronto para o Docker</summary>
-
-Três tasks, respondendo "o que precisa ser verdade para os módulos
-`community.docker` funcionarem?".
-
-```yaml
-- name: Install the docker engine and the collection's python dependency
-  ansible.builtin.dnf:
-    name: "{{ docker_packages }}"      # docker + python3-requests
-    state: present
-```
-
-`state: present` verifica e não age se já estiver instalado. `state: latest`
-consultaria o repositório a cada execução e reportaria `changed` sempre que a
-Amazon publicasse uma versão nova — **`present` é idempotente, `latest` não é**.
-
-O segundo pacote é o que surpreende: a `community.docker` abandonou o SDK
-`docker-py` na versão 4.0 e hoje fala com a API do Docker por HTTP. A única
-dependência Python real é `requests`, que no AL2023 vem do pacote
-`python3-requests` — e não de um `pip install docker`, que o sistema recusa por
-PEP 668.
-
-```yaml
-- name: Ensure the docker daemon is running and starts on boot
-  ansible.builtin.systemd_service:
-    name: "{{ docker_service_name }}"
-    state: started       # agora
-    enabled: true        # depois do reboot
-```
-
-Instalar não é o mesmo que rodar: o `dnf` não sobe o serviço, e no AL2023 o
-daemon vem desabilitado por padrão. Um argumento sem o outro é meio serviço.
-
-```yaml
-- name: Let the login user reach the docker socket without sudo
-  ansible.builtin.user:
-    name: "{{ docker_admin_user }}"
-    groups: docker
-    append: true
-```
-
-O argumento `groups` é **absoluto**: ele descreve o conjunto completo de grupos
-secundários. Sem `append: true`, o Ansible entenderia "os grupos deste usuário
-devem ser exatamente `[docker]`" e removeria o `ec2-user` de `adm`, `wheel` e
-`systemd-journal` — tirando o `sudo` da máquina onde o `sudo` é a única forma
-de consertar.
-
-As tasks do Ansible não dependem desse grupo (rodam com `become`). Ele existe
-para o `docker ps` manual da depuração — e vale só a partir da próxima sessão
-SSH, porque grupo é resolvido no login.
-
-</details>
-
-<details>
-<summary><b>6. <code>roles/app</code></b>: clone, build e container</summary>
-
-Cinco tasks: instala `git`, clona, renderiza o Dockerfile, constrói a imagem e
-sobe o container.
-
-```yaml
-- name: Render the Dockerfile into the build context
-  ansible.builtin.template:
-    src: Dockerfile.j2
-    dest: "{{ app_src_dir }}/Dockerfile"
-```
-
-O repositório `docker/getting-started-app` traz `.dockerignore` mas **não traz
-Dockerfile** — escrevê-lo é parte do exercício do tutorial da Docker. Por isso a
-role usa `template` e não `copy`: há uma variável real, `app_node_image`. Um
-`template` sem nenhum `{{ }}` seria `copy` disfarçado.
-
-```yaml
-- name: Build the application image
-  community.docker.docker_image:
-    name: "{{ app_image }}"
-    source: build
-    build:
-      path: "{{ app_src_dir }}"
-    state: present
-```
-
-A única checagem de idempotência deste módulo é **se a imagem já existe**. O
-`force_source` fica no default `false` de propósito: forçado, ele reconstruiria
-a cada execução e o `changed=0` nunca aconteceria.
-
-```yaml
-- name: Run the application container
-  community.docker.docker_container:
-    name: "{{ app_container_name }}"
-    image: "{{ app_image }}"
-    ports:
-      - "{{ app_port }}:{{ app_container_port }}"
-    env:
-      APP_ADMIN_PASSWORD: "{{ app_admin_password }}"
-  no_log: true
-```
-
-O mapeamento de portas tem os dois lados vindos de lugares diferentes:
-`app_port` é `defaults/` (o host pode publicar onde quiser), `app_container_port`
-é `vars/` (fixo em 3000, porque `src/index.js` chama `app.listen(3000)` com o
-número escrito no código).
-
-`no_log: true` porque a senha do vault vai como variável de ambiente. Sem ele,
-uma falha nesta task imprimiria os argumentos do módulo — senha decifrada
-inclusive — exatamente no arquivo que vira evidência. O `PLAY RECAP` continua
-contando `changed` normalmente.
-
-</details>
-
-### Precedência: as duas que importam aqui
-
-O Ansible tem 22 níveis de precedência de variáveis. Duas decidem tudo neste
-projeto.
-
-#### 1. `vars/` vence `defaults/`, e a linha de comando vence os dois
-
-```text
-defaults/main.yml  <  group_vars/  <  vars/main.yml  <  --extra-vars
-     (mais fraco)                                        (mais forte)
-```
-
-Consequência prática: dá para trocar a imagem base sem editar a role.
-
-```bash
-ansible-playbook site.yml --limit env_dev -e "app_node_image=node:lts-slim"
-```
-
-O mesmo comando **não** conseguiria trocar `app_container_port`, que está em
-`vars/` — e é exatamente essa a intenção, porque a porta interna é imposta pela
-aplicação, não uma preferência.
-
-#### 2. `group_vars/all/` carrega sozinho, e é onde o vault mora
-
-```text
-group_vars/all/vars.yml    → app_admin_password: "{{ vault_app_admin_password }}"
-group_vars/all/vault.yml   → $ANSIBLE_VAULT;1.1;AES256 (cifrado)
-```
-
-`all` é o grupo implícito ao qual todo host pertence, e o Ansible carrega esse
-diretório sem nenhum `include`. Foi a escolha certa aqui porque os grupos deste
-projeto (`env_dev`, `role_docker_host`) são **gerados** pelo inventário
-dinâmico: um `group_vars/env_dev.yml` dependeria do nome que o plugin resolve.
-
-A indireção entre os dois arquivos é deliberada. `vars.yml` fica em texto claro
-e mostra **onde** o segredo é consumido, sem decifrar nada; `vault.yml` guarda o
-valor. Prefixar a variável cifrada com `vault_` deixa visível, em qualquer
-`grep`, que aquele valor vem do cofre.
+| **[docs/terraform.md](docs/terraform.md)** | Como o Terraform funciona · anatomia dos sete arquivos `.tf` da raiz e dos dois módulos |
+| **[docs/ansible.md](docs/ansible.md)** | Como o Ansible funciona · anatomia do `ansible.cfg`, do inventário, do `site.yml` e das duas roles |
+
+As duas ferramentas convergem para um estado desejado por caminhos opostos — o
+Terraform ordena o trabalho por um grafo de dependências e lembra do passado
+pelo state; o Ansible executa literalmente de cima para baixo e pergunta ao host
+toda vez. Ler os dois documentos em sequência é o jeito mais rápido de ver onde
+uma termina e a outra começa.
 
 ---
 
