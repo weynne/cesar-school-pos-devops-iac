@@ -25,7 +25,6 @@ responsabilidade do Ansible.
 - [Arquitetura](#arquitetura)
 - [Estrutura de diretórios](#estrutura-de-diretórios)
 - [Pré-requisitos](#pré-requisitos)
-- [Início rápido](#início-rápido)
 - [Execução](#execução)
 - [Destruição](#destruição)
 - [Troubleshooting](#troubleshooting)
@@ -316,17 +315,21 @@ Confirme que ficou cifrado — a primeira linha tem que ser o cabeçalho do vaul
 head -1 group_vars/all/vault.yml     # $ANSIBLE_VAULT;1.1;AES256
 ```
 
-Com isso pronto, o [Início rápido](#início-rápido) leva do clone à aplicação no
-ar em cinco passos.
+Com isso pronto, a [Execução](#execução) leva do clone à aplicação no ar em
+seis passos.
 
 ---
 
-## Início rápido
+## Execução
 
 Com os [pré-requisitos](#pré-requisitos) resolvidos — coleções, `boto3`, par de
-chaves, cofre e bucket —, este é o caminho mais curto do clone até a aplicação
-no ar. Aqui só os comandos; o "porquê" de cada um está na
-[Execução](#execução).
+chaves, cofre e bucket —, os comandos abaixo são exatamente os que produziram
+as [evidências](#evidências-da-entrega).
+
+> [!NOTE]
+> Os `cd` sem `../` partem **deste diretório** (`projeto-final/`); os com `../`
+> são relativos ao passo anterior. Se estiver perdido, volte para cá com
+> `cd "$(git rev-parse --show-toplevel)/projeto-final"`.
 
 ```bash
 cd "$(git rev-parse --show-toplevel)/projeto-final"
@@ -335,9 +338,9 @@ export BUCKET="tfstate-projeto-final-SEU-NOME"    # o bucket que você criou
 
 ### 1. Provisionar em `dev`
 
-Só **duas** variáveis são obrigatórias. Troque o valor de `OWNER` e cole o
-bloco inteiro: ele resolve o seu IP público na hora e escreve o
-`terraform.tfvars` pronto.
+Só **duas** variáveis são obrigatórias. Troque o valor de `OWNER` e cole o bloco
+inteiro: ele resolve o seu IP público na hora e escreve o `terraform.tfvars`
+pronto.
 
 ```bash
 cd terraform
@@ -349,122 +352,12 @@ ssh_ingress_cidr = "$(curl -s https://checkip.amazonaws.com)/32"
 EOF
 
 terraform init -backend-config="bucket=$BUCKET"
-terraform workspace select -or-create dev
-terraform apply                      # espere: Plan: 13 to add
-```
-
-### 2. Configurar com o Ansible
-
-```bash
-cd ../ansible
-ansible-inventory --graph            # tem que listar @role_docker_host
-ansible-playbook site.yml --limit env_dev
-```
-
-```text
-PLAY RECAP ***********************************************************
-...dev-host-instance : ok=9  changed=8  unreachable=0  failed=0
-```
-
-> [!IMPORTANT]
-> Se o `--graph` vier vazio, **pare aqui**. Rodar o playbook contra um
-> inventário vazio termina em `ok=0 changed=0`, que se parece com sucesso.
-
-### 3. Provar a idempotência
-
-Sem mudar nada, nem código nem infraestrutura:
-
-```bash
-ansible-playbook site.yml --limit env_dev
-```
-
-```text
-PLAY RECAP ***********************************************************
-...dev-host-instance : ok=9  changed=0  unreachable=0  failed=0
-```
-
-### 4. Abrir a aplicação
-
-```bash
-cd ../terraform
-echo "$(terraform output -raw app_url)"        # pelo IP
-echo "$(terraform output -raw app_url_dns)"    # pelo DNS público
-```
-
-O `echo` acrescenta a quebra de linha que o `-raw` omite, deixando a URL
-clicável no terminal. As duas carregam a porta `3000` explicitamente: o
-Security Group não abre a 80.
-
-### 5. Repetir em `prod` e destruir os dois
-
-```bash
-terraform workspace select -or-create prod
-terraform apply
-cd ../ansible && ansible-playbook site.yml --limit env_prod
-
-cd ../terraform
-terraform workspace select prod && terraform destroy
-terraform workspace select dev  && terraform destroy
-```
-
-O bucket do backend não é destruído: ele pertence a outro ciclo de vida e guarda
-o histórico do state. Apague manualmente se não for mais usá-lo.
-
-> [!TIP]
-> Deu erro? O [Troubleshooting](#troubleshooting) cobre os casos mais comuns,
-> incluindo o inventário vazio, o `explicit deny` de sessão expirada do Learner
-> Lab e o SSH que expira enquanto a instância ainda está subindo.
-
----
-
-## Execução
-
-Os comandos abaixo são exatamente os que produziram as evidências.
-
-> [!NOTE]
-> Os `cd` sem `../` partem **deste diretório** (`projeto-final/`); os com `../`
-> são relativos ao passo anterior. Se estiver perdido, volte para cá com
-> `cd "$(git rev-parse --show-toplevel)/projeto-final"`.
->
-> O passo 2 usa a variável `$BUCKET` definida nos pré-requisitos. Num terminal
-> novo, exporte-a de novo antes do `init`.
-
-### 1. Variáveis locais
-
-```bash
-cd terraform
-
-cat > terraform.tfvars <<EOF
-owner            = "Seu Nome"
-ssh_ingress_cidr = "$(curl -s https://checkip.amazonaws.com)/32"
-EOF
-```
-
-`terraform.tfvars` está no `.gitignore`: ele guarda o IP de quem executa.
-O IP residencial muda; reconfirme antes de cada `apply`.
-
-Para preencher à mão em vez de gerar, o
-[`terraform.tfvars.example`](terraform/terraform.tfvars.example) traz todas as
-variáveis comentadas, obrigatórias e opcionais:
-`cp terraform.tfvars.example terraform.tfvars`.
-
-### 2. Backend e workspace
-
-```bash
-terraform init -backend-config="bucket=$BUCKET"
 terraform fmt -check -recursive
 terraform validate
 terraform workspace select -or-create dev
-```
-
-### 3. Provisionar
-
-```bash
-terraform apply
+terraform apply                      # espere: Plan: 13 to add
 terraform output
 ```
-
-Saída relevante:
 
 ```text
 app_url             = "http://<ip>:3000"
@@ -474,7 +367,13 @@ ssh_command         = "ssh -i ~/.ssh/projeto-final ec2-user@<ip>"
 workspace           = "dev"
 ```
 
-### 4. Conferir a descoberta antes de configurar
+`terraform.tfvars` está no `.gitignore`: ele guarda o IP de quem executa, e o IP
+residencial muda — reconfirme antes de cada `apply`. Para preencher à mão em vez
+de gerar, o
+[`terraform.tfvars.example`](terraform/terraform.tfvars.example) traz todas as
+variáveis comentadas, obrigatórias e opcionais.
+
+### 2. Conferir a descoberta antes de configurar
 
 ```bash
 cd ../ansible
@@ -496,7 +395,7 @@ ansible-inventory --graph
 > Se os grupos vierem vazios, **pare aqui**. Rodar o playbook contra um
 > inventário vazio termina em `ok=0 changed=0`, que se parece com sucesso.
 
-### 5. Configurar
+### 3. Configurar
 
 ```bash
 ansible-playbook site.yml --limit env_dev
@@ -507,7 +406,7 @@ PLAY RECAP ***********************************************************
 ...dev-host-instance : ok=9  changed=8  unreachable=0  failed=0
 ```
 
-### 6. Provar a idempotência
+### 4. Provar a idempotência
 
 Sem alterar nada — nem código, nem infraestrutura:
 
@@ -520,7 +419,7 @@ PLAY RECAP ***********************************************************
 ...dev-host-instance : ok=9  changed=0  unreachable=0  failed=0
 ```
 
-### 7. Acessar
+### 5. Acessar
 
 ```bash
 cd ../terraform
@@ -541,10 +440,10 @@ open        "$(terraform output -raw app_url)"    # macOS
 xdg-open    "$(terraform output -raw app_url)"    # Linux com desktop
 ```
 
-Ambas as URLs carregam a porta explicitamente. O Security Group abre apenas
-22 e 3000, então um hostname sem porta cai na 80 e resulta em timeout.
+As duas URLs carregam a porta explicitamente. O Security Group abre apenas 22 e
+3000, então um hostname sem porta cai na 80 e resulta em timeout.
 
-### 8. Repetir em `prod`
+### 6. Repetir em `prod`
 
 ```bash
 terraform workspace select -or-create prod
@@ -555,6 +454,11 @@ cd ../ansible && ansible-playbook site.yml --limit env_prod
 Cada workspace tem CIDR próprio e um objeto de state próprio no bucket —
 `projeto-final/terraform.tfstate` para o `dev` e
 `env:/prod/projeto-final/terraform.tfstate` para o `prod`.
+
+> [!TIP]
+> Deu erro? O [Troubleshooting](#troubleshooting) cobre os casos mais comuns,
+> incluindo o inventário vazio, o `explicit deny` de sessão expirada do Learner
+> Lab e o SSH que expira enquanto a instância ainda está subindo.
 
 ---
 

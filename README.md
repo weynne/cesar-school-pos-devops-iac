@@ -6,9 +6,9 @@ CESAR School.
 
 São duas entregas, cada uma em seu próprio diretório, com código, evidências,
 documentação e state remoto separados. Este arquivo é só o índice. A
-documentação de cada entrega vive no README do diretório correspondente, e abre
-com um **Início rápido**: o caminho mais curto do clone até a infraestrutura no
-ar, antes de qualquer explicação.
+documentação de cada entrega vive no README do diretório correspondente, que
+começa pelo manual de operações — o que preparar e quais comandos rodar — e só
+depois explica as decisões.
 
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white)
 ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white)
