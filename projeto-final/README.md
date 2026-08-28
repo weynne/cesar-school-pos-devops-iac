@@ -20,25 +20,28 @@ responsabilidade do Ansible.
 
 ## Sumário
 
-- [Arquitetura](#arquitetura)
-- [Início rápido](#início-rápido)
-- [A integração Terraform → Ansible](#a-integração-terraform--ansible)
-- [Pré-requisitos](#pré-requisitos)
-- [Execução](#execução)
+**Manual de operações**
+
+- [Arquitetura](#arquitetura) — o que é provisionado, e o fluxo entre as duas ferramentas
+- [Estrutura de diretórios](#estrutura-de-diretórios) — onde cada arquivo mora
+- [Pré-requisitos](#pré-requisitos) — o que preparar antes do primeiro comando
+- [Início rápido](#início-rápido) — a via expressa até a aplicação no ar
+- [Execução](#execução) — o mesmo percurso com o porquê de cada passo
 - [Destruição](#destruição)
-- [Evidências](#evidências)
-- [Estrutura de diretórios](#estrutura-de-diretórios)
-- [Da Atividade 1 ao Projeto Final](#da-atividade-1-ao-projeto-final)
+- [Troubleshooting](#troubleshooting)
+
+**Memorial descritivo**
+
+- [A integração Terraform → Ansible](#a-integração-terraform--ansible) — como as tags costuram as duas ferramentas
 - [Decisões de arquitetura](#decisões-de-arquitetura)
 - [Divergências em relação ao enunciado](#divergências-em-relação-ao-enunciado)
-- [Troubleshooting](#troubleshooting)
-- [Referência conceitual](#referência-conceitual) — como as duas ferramentas
-  funcionam, em [`docs/`](docs/)
+- [Da Atividade 1 ao Projeto Final](#da-atividade-1-ao-projeto-final)
+- [Referências](#referências) — evidências e a teoria das duas ferramentas
 - [Créditos](#créditos)
 
-> O [Início rápido](#início-rápido) é o caminho mais curto para ver a aplicação
-> no ar. A [Execução](#execução) é o mesmo percurso com o "porquê" de cada
-> comando, e é dela que saíram as evidências.
+> A primeira metade deste documento é um manual de operações: leia de cima para
+> baixo e a infraestrutura sobe. A segunda é o memorial — por que cada coisa foi
+> feita assim — e só faz sentido depois de rodar.
 
 ---
 
@@ -126,253 +129,44 @@ instância perguntando à API da EC2 quais máquinas têm aquelas tags.
 
 ---
 
-## Início rápido
-
-O caminho mais curto do clone até a aplicação no ar. O [`Makefile`](Makefile)
-embrulha o encanamento de shell — descoberta do interpretador do Ansible,
-consulta do IP público, troca de workspace. `make -n <alvo>` imprime o comando
-exato que cada um roda, e a [Execução](#execução) traz todos eles por extenso.
-
-**Antes de começar:** [Terraform ≥ 1.10](https://developer.hashicorp.com/terraform/install),
-[Ansible](https://docs.ansible.com/ansible/latest/installation_guide/index.html)
-(testado no core 2.21),
-[AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-e credenciais AWS válidas em `us-east-1` — no Learner Lab são **três** valores,
-não dois. Os detalhes estão em [Credenciais AWS](#credenciais-aws).
-
-```bash
-cd "$(git rev-parse --show-toplevel)/projeto-final"
-make help
-```
-
-### 1. Preparar a máquina
-
-Uma vez só. Escolha um nome de bucket que seja seu — nomes são únicos na AWS
-inteira:
-
-```bash
-export BUCKET="tfstate-projeto-final-SEU-NOME"
-
-make check           # ferramentas instaladas e sessão AWS de pé
-make install-deps    # coleções Ansible + boto3 no interpretador certo
-make keypair         # par de chaves SSH que o Terraform vai registrar
-make vault           # .vault_pass e um vault.yml cifrado com senha nova
-make bucket          # bucket de state, com versionamento e cifragem
-```
-
-> [!IMPORTANT]
-> Se `make install-deps` reclamar do `boto3`, ele imprime os dois comandos de
-> instalação possíveis e para. Rode o que corresponde à sua instalação do
-> Ansible e repita — sem o `boto3` no interpretador certo, o inventário
-> dinâmico volta **vazio e sem erro**, e o playbook termina em `ok=0`, que se
-> parece com sucesso.
-
-### 2. Provisionar e configurar em `dev`
-
-```bash
-make tfvars OWNER="Seu Nome"    # resolve o seu IP público e escreve o tfvars
-make init                       # terraform init apontando para o seu bucket
-make deploy-dev
-```
+## Estrutura de diretórios
 
 ```text
-PLAY RECAP ***********************************************************
-...dev-host-instance : ok=9  changed=8  unreachable=0  failed=0
+projeto-final/
+├── terraform/
+│   ├── backend.tf              # backend S3, key própria desta entrega
+│   ├── versions.tf             # required_version + required_providers
+│   ├── providers.tf            # provider aws + default_tags
+│   ├── locals.tf               # configuração por workspace
+│   ├── variables.tf            # entradas do projeto
+│   ├── main.tf                 # guard, key pair e composição dos módulos
+│   ├── outputs.tf              # IP, DNS, app_url, ssh_command
+│   ├── terraform.tfvars.example  # modelo comentado; copie e preencha
+│   └── modules/
+│       ├── network/            # VPC, subnet, IGW, rota, associação
+│       └── docker-host/        # Security Group, regras e a EC2 crua
+├── ansible/
+│   ├── ansible.cfg             # inventário, usuário, chave, vault
+│   ├── requirements.yml        # amazon.aws + community.docker
+│   ├── site.yml                # aplica as roles, nesta ordem
+│   ├── .vault_pass.example     # modelo da senha do cofre; a real não é versionada
+│   ├── inventory/
+│   │   └── aws_ec2.yml         # inventário dinâmico (a integração)
+│   ├── group_vars/all/
+│   │   ├── vars.yml            # indireção, em texto claro
+│   │   └── vault.yml           # cifrado com ansible-vault
+│   └── roles/
+│       ├── docker/             # engine, daemon, grupo do usuário
+│       └── app/                # clone, Dockerfile, build, container
+├── docs/
+│   ├── terraform.md            # como o Terraform funciona + anatomia dos .tf
+│   └── ansible.md              # como o Ansible funciona + anatomia das roles
+└── evidencias/
+    └── README.md               # tabela das 21 evidências
 ```
 
-`deploy-dev` chama três alvos em sequência: `apply-dev`, `inventory` e
-`configure-dev`. Continuam sendo três passos independentes — o Terraform não
-invoca o Ansible, o Makefile apenas os enfileira. É por isso que o próximo
-passo é um comando sozinho.
-
-### 3. Provar a idempotência
-
-Sem mudar nada, nem código nem infraestrutura:
-
-```bash
-make configure-dev
-```
-
-```text
-PLAY RECAP ***********************************************************
-...dev-host-instance : ok=9  changed=0  unreachable=0  failed=0
-```
-
-### 4. Abrir a aplicação
-
-```bash
-make url     # imprime as duas URLs, pelo IP e pelo DNS
-make open    # abre a primeira no navegador
-```
-
-As URLs carregam a porta `3000` explicitamente: o Security Group não abre a 80.
-
-### 5. Repetir em `prod` e destruir os dois
-
-```bash
-make deploy-prod
-
-make destroy-prod
-make destroy-dev
-```
-
-O bucket do backend não é destruído: ele pertence a outro ciclo de vida e guarda
-o histórico do state. Apague manualmente se não for mais usá-lo.
-
-> [!TIP]
-> Deu erro? O [Troubleshooting](#troubleshooting) cobre os casos mais comuns,
-> incluindo o inventário vazio, o `explicit deny` de sessão expirada do Learner
-> Lab e o SSH que expira enquanto a instância ainda está subindo.
-
----
-
-## A integração Terraform → Ansible
-
-### Opção escolhida: **A — inventário dinâmico + execução manual**
-
-O enunciado aceita duas formas. Esta entrega usa a **Opção A**: o Ansible
-descobre a infraestrutura consultando a API da EC2 através do plugin
-`amazon.aws.aws_ec2`, e o `ansible-playbook` é executado como um passo
-próprio, depois do `terraform apply`.
-
-Com as duas etapas independentes, reexecutar só a configuração é um comando:
-você roda o playbook de novo, e o Terraform nem fica sabendo. Nenhum recurso
-precisa ser recriado para o Ansible rodar outra vez.
-
-É isso que torna a segunda execução — a que comprova `changed=0` — apenas
-repetir um comando.
-
-### O que dispara o quê, em que ordem
-
-| # | Arquivo | O que faz, e o que isso produz |
-| --- | --- | --- |
-| 1 | `terraform/main.tf` | Cria key pair, VPC e instância → uma EC2 com as tags `Project`, `Environment` e `Role` |
-| 2 | `terraform/providers.tf` | `default_tags` aplica `Project` e `Environment` a **todo** recurso → as tags que o passo 3 filtra |
-| 3 | `ansible/inventory/aws_ec2.yml` | Consulta a EC2 e converte tags em grupos → `role_docker_host`, `env_dev`, `env_prod` |
-| 4 | `ansible/ansible.cfg` | Aponta inventário, usuário e chave privada → conexão SSH sem flags na linha de comando |
-| 5 | `ansible/site.yml` | Mira `role_docker_host` e aplica as roles na ordem em que estão escritas |
-| 6 | `ansible/roles/docker` | Engine, daemon habilitado, usuário no grupo → host pronto para os módulos `community.docker` |
-| 7 | `ansible/roles/app` | Clona, renderiza o Dockerfile, builda e sobe o container → aplicação em `:3000` |
-
-Nada nesse encadeamento passa por arquivo escrito à mão: o único acoplamento
-entre as duas ferramentas são **as tags**.
-
-### A costura: uma tag dos dois lados
-
-O ponto exato onde o Terraform encontra o Ansible:
-
-```hcl
-# terraform/providers.tf -- aplicado a todo recurso taggável
-default_tags {
-  tags = {
-    Environment = terraform.workspace          # dev | prod
-    Project     = var.project_name             # projeto-final-pos-devops-iac
-  }
-}
-```
-```hcl
-# terraform/modules/docker-host/main.tf -- na instância
-tags = merge(var.tags, {
-  Role = "docker-host"
-})
-```
-```yaml
-# ansible/inventory/aws_ec2.yml
-filters:
-  tag:Project: projeto-final-pos-devops-iac    # tem que casar com var.project_name
-  instance-state-name: running
-
-keyed_groups:
-  - key: tags.Role                             # docker-host -> role_docker_host
-    prefix: role
-  - key: tags.Environment                      # dev -> env_dev
-    prefix: env
-
-compose:
-  ansible_host: public_ip_address              # sem isto, o plugin entrega o DNS privado
-```
-
-Trocar `var.project_name` de um lado sem trocar do outro faz o inventário
-voltar vazio — e o Ansible **não falha** nesse caso, apenas termina com
-`ok=0`, o que parece sucesso. É por isso que `ansible-inventory --graph` é um
-passo obrigatório do roteiro de execução, e não um comando de depuração.
-
-### Onde cada abordagem executa
-
-| Abordagem | Onde roda | Implicação |
-| --- | --- | --- |
-| `remote-exec` | Dentro do servidor | Configuraria a instância no lugar do Ansible. Proibido pelo enunciado |
-| `local-exec` | Na máquina do operador | Alternativa aceita pelo enunciado (Opção B). Roda como parte do `terraform apply`: a configuração deixa de ser um passo que se repete sozinho, e uma falha do Ansible marca o recurso do Terraform como problemático |
-| **inventário dinâmico** | Etapas separadas | **Adotado nesta entrega.** Cada ferramenta roda por conta própria: reexecutar a configuração não exige tocar na infraestrutura, e uma falha do Ansible não marca recurso nenhum do Terraform |
-
-Esta entrega adotou a terceira linha, e o código não tem **nenhum** bloco
-`provisioner`:
-
-```text
-$ grep -rn 'provisioner\|remote-exec' terraform --include='*.tf'
-terraform/modules/docker-host/main.tf:2:# installing software mixes the same responsibilities as provisioner
-terraform/modules/docker-host/main.tf:3:# "remote-exec" -- everything inside the instance belongs to Ansible.
-```
-
-As duas únicas ocorrências estão num comentário explicando por que o padrão
-não é usado.
-
-Manter o playbook fora do `terraform apply` muda duas coisas concretas: **o que
-custa rodar de novo** e **o que acontece quando o Ansible falha**. As duas
-seguem do mesmo fato — na Opção B o playbook é um passo de dentro do `apply`;
-na Opção A, um comando à parte.
-
-#### Rodar de novo
-
-Na Opção A é um comando: `ansible-playbook site.yml` outra vez, e o Terraform
-nem fica sabendo.
-
-Na Opção B, não. Um segundo `terraform apply` **não** reexecuta o playbook — o
-`null_resource` não mudou, então o provisioner não dispara. Para provar o
-`changed=0` que o enunciado cobra, você acaba rodando o playbook à parte assim
-mesmo, ou forçando a recriação do recurso.
-
-> [!NOTE]
-> Idempotência não é privilégio da Opção A. O Terraform é idempotente por
-> construção, e o `changed=0` do Ansible é cobrado nas duas opções. O que muda
-> é o custo de chegar lá.
-
-#### Quando o Ansible falha
-
-Ao terminar, o `ansible-playbook` devolve um **código de saída** — e na Opção B
-é esse número que o Terraform observa.
-
-Zero, e o `apply` segue como se nada tivesse acontecido. Qualquer outro valor, e
-três coisas acontecem em sequência:
-
-1. o `apply` termina com erro;
-2. o recurso onde o provisioner está declarado é marcado como *tainted*;
-3. o **próximo** `apply` destrói e recria esse recurso — o Terraform deixou de
-   confiar que ele foi configurado corretamente.
-
-O tamanho do estrago depende de onde o provisioner está declarado. Preso ao
-`aws_instance`, um erro de playbook custa **recriar a máquina inteira**. Num
-`null_resource` com `triggers`, como o enunciado sugere, recria só o recurso
-lógico, que não existe na AWS e não custa nada — é por isso que essa é a
-montagem recomendada da Opção B.
-
-Dá para desarmar com `on_failure = continue`, que faz o Terraform registrar o
-erro e seguir sem marcar nada:
-
-```hcl
-provisioner "local-exec" {
-  command    = "ansible-playbook ..."
-  on_failure = continue    # palavra nua, não string
-}
-```
-
-Mas isso troca uma falha barulhenta por uma silenciosa: o `apply` termina verde,
-o servidor fica sem configuração, e o problema reaparece mais tarde como "a
-aplicação não responde". Num fluxo em que o Ansible é a única coisa que instala
-software, é o pior negócio possível.
-
-Na Opção A nada disso existe: o `ansible-playbook` é um comando próprio, e uma
-falha dele não tem como marcar recurso nenhum do Terraform.
+O que veio da Atividade 1 e o que mudou está em
+[Da Atividade 1 ao Projeto Final](#da-atividade-1-ao-projeto-final).
 
 ---
 
@@ -495,11 +289,7 @@ O que **vem** no clone é o
 uma linha, só a senha, sem comentário nenhum — o arquivo inteiro *é* a senha.
 
 Como o valor protegido é uma **senha de admin simulada**, que não dá acesso a
-nada, recrie o cofre com a sua própria senha. Um alvo faz as duas coisas:
-
-```bash
-make vault
-```
+nada, recrie o cofre com a sua própria senha.
 
 > [!NOTE]
 > Se preferir acessar o cofre deste repositório em vez de criar o seu, envie um
@@ -507,7 +297,7 @@ make vault
 > versionada de propósito: publicar a senha ao lado do arquivo que ela decifra
 > anularia a proteção do `ansible-vault`.
 
-À mão, é isto que o alvo faz:
+Para criar o seu:
 
 ```bash
 cd ansible
@@ -530,6 +320,105 @@ Confirme que ficou cifrado — a primeira linha tem que ser o cabeçalho do vaul
 ```bash
 head -1 group_vars/all/vault.yml     # $ANSIBLE_VAULT;1.1;AES256
 ```
+
+Com isso pronto, o [Início rápido](#início-rápido) leva do clone à aplicação no
+ar em cinco passos.
+
+---
+
+## Início rápido
+
+Com os [pré-requisitos](#pré-requisitos) resolvidos — coleções, `boto3`, par de
+chaves, cofre e bucket —, este é o caminho mais curto do clone até a aplicação
+no ar. Aqui só os comandos; o "porquê" de cada um está na
+[Execução](#execução).
+
+```bash
+cd "$(git rev-parse --show-toplevel)/projeto-final"
+export BUCKET="tfstate-projeto-final-SEU-NOME"    # o bucket que você criou
+```
+
+### 1. Provisionar em `dev`
+
+Só **duas** variáveis são obrigatórias. Troque o valor de `OWNER` e cole o
+bloco inteiro: ele resolve o seu IP público na hora e escreve o
+`terraform.tfvars` pronto.
+
+```bash
+cd terraform
+export OWNER="Seu Nome"
+
+cat > terraform.tfvars <<EOF
+owner            = "$OWNER"
+ssh_ingress_cidr = "$(curl -s https://checkip.amazonaws.com)/32"
+EOF
+
+terraform init -backend-config="bucket=$BUCKET"
+terraform workspace select -or-create dev
+terraform apply                      # espere: Plan: 13 to add
+```
+
+### 2. Configurar com o Ansible
+
+```bash
+cd ../ansible
+ansible-inventory --graph            # tem que listar @role_docker_host
+ansible-playbook site.yml --limit env_dev
+```
+
+```text
+PLAY RECAP ***********************************************************
+...dev-host-instance : ok=9  changed=8  unreachable=0  failed=0
+```
+
+> [!IMPORTANT]
+> Se o `--graph` vier vazio, **pare aqui**. Rodar o playbook contra um
+> inventário vazio termina em `ok=0 changed=0`, que se parece com sucesso.
+
+### 3. Provar a idempotência
+
+Sem mudar nada, nem código nem infraestrutura:
+
+```bash
+ansible-playbook site.yml --limit env_dev
+```
+
+```text
+PLAY RECAP ***********************************************************
+...dev-host-instance : ok=9  changed=0  unreachable=0  failed=0
+```
+
+### 4. Abrir a aplicação
+
+```bash
+cd ../terraform
+echo "$(terraform output -raw app_url)"        # pelo IP
+echo "$(terraform output -raw app_url_dns)"    # pelo DNS público
+```
+
+O `echo` acrescenta a quebra de linha que o `-raw` omite, deixando a URL
+clicável no terminal. As duas carregam a porta `3000` explicitamente: o
+Security Group não abre a 80.
+
+### 5. Repetir em `prod` e destruir os dois
+
+```bash
+terraform workspace select -or-create prod
+terraform apply
+cd ../ansible && ansible-playbook site.yml --limit env_prod
+
+cd ../terraform
+terraform workspace select prod && terraform destroy
+terraform workspace select dev  && terraform destroy
+```
+
+O bucket do backend não é destruído: ele pertence a outro ciclo de vida e guarda
+o histórico do state. Apague manualmente se não for mais usá-lo.
+
+> [!TIP]
+> Deu erro? O [Troubleshooting](#troubleshooting) cobre os casos mais comuns,
+> incluindo o inventário vazio, o `explicit deny` de sessão expirada do Learner
+> Lab e o SSH que expira enquanto a instância ainda está subindo.
 
 ---
 
@@ -693,128 +582,218 @@ guarda o histórico do state. Apague manualmente se não for mais usá-lo.
 
 ---
 
-## Evidências
+## Troubleshooting
 
-As 21 evidências da execução completa — `apply` e `destroy` nos dois workspaces,
-as duas execuções do playbook que provam o `changed=0`, a aplicação no navegador
-pelo IP e pelo DNS, e o vault cifrado — estão em
-**[`evidencias/`](evidencias/README.md)**, com uma tabela dizendo o que cada
-arquivo prova.
+**`ansible-inventory --graph` volta vazio**
+A tag `Project` da instância não casa com o filtro do `aws_ec2.yml`, ou a
+instância ainda não está `running`. Confirme com
+`aws ec2 describe-instances --filters "Name=tag:Project,Values=..."`.
 
-> O IP residencial do operador aparece como `203.0.113.42/32` (RFC 5737) e o
-> ID da conta como `123456789012`. O que a evidência prova — porta 22 restrita
-> a um único `/32` — não muda.
+**`UNREACHABLE! ... Connection timed out during banner exchange`**
+A instância respondeu ao Terraform antes do `sshd` terminar de subir — é o que
+a `evidencia_12` registra. Repetir o playbook resolve; nenhuma task chegou a
+executar, então não há estado parcial.
 
----
+**O playbook trava em `Gathering Facts` depois de uma falha de conexão**
+O Ansible reaproveita conexões SSH via `ControlMaster`. Uma conexão que morreu
+deixa o socket para trás e as execuções seguintes esperam por um mestre que
+não existe mais:
 
-## Estrutura de diretórios
+```bash
+rm -f ~/.ansible/cp/*
+```
+
+**`Error acquiring the state lock` com `PreconditionFailed`**
+Lock órfão de um `terraform` interrompido. Confirme que nenhum processo está
+ativo (`pgrep -a terraform`) e destrave com o ID informado na mensagem:
+
+```bash
+terraform force-unlock <LOCK_ID>
+```
+
+Nunca use `-lock=false` para contornar: é o caminho que corrompe state.
+
+**`[WARNING]: Found variable using reserved name 'tags'`**
+O plugin `aws_ec2` publica as tags da instância numa hostvar chamada `tags`, e
+`tags` é uma das 76 palavras reservadas do Ansible. O aviso é inofensivo:
+nenhuma task do projeto usa `tags` como palavra-chave, e o `keyed_groups`
+resolve as tags dentro do plugin, antes da resolução de variáveis.
+
+**`UnauthorizedOperation` com `explicit deny` na policy `voc-cancel-cred`**
+A sessão do Learner Lab terminou. As credenciais ainda existem em
+`~/.aws/credentials`, mas o lab anexou uma policy de negação explícita — por
+isso o erro fala em autorização, e não em token inválido. Reinicie o lab e cole
+as credenciais novas; não é erro de código.
 
 ```text
-projeto-final/
-├── Makefile                    # embrulha os comandos do roteiro de execução
-├── terraform/
-│   ├── backend.tf              # backend S3, key própria desta entrega
-│   ├── versions.tf             # required_version + required_providers
-│   ├── providers.tf            # provider aws + default_tags
-│   ├── locals.tf               # configuração por workspace
-│   ├── variables.tf            # entradas do projeto
-│   ├── main.tf                 # guard, key pair e composição dos módulos
-│   ├── outputs.tf              # IP, DNS, app_url, ssh_command
-│   ├── terraform.tfvars.example  # modelo comentado; copie e preencha
-│   └── modules/
-│       ├── network/            # VPC, subnet, IGW, rota, associação
-│       └── docker-host/        # Security Group, regras e a EC2 crua
-├── ansible/
-│   ├── ansible.cfg             # inventário, usuário, chave, vault
-│   ├── requirements.yml        # amazon.aws + community.docker
-│   ├── site.yml                # aplica as roles, nesta ordem
-│   ├── .vault_pass.example     # modelo da senha do cofre; a real não é versionada
-│   ├── inventory/
-│   │   └── aws_ec2.yml         # inventário dinâmico (a integração)
-│   ├── group_vars/all/
-│   │   ├── vars.yml            # indireção, em texto claro
-│   │   └── vault.yml           # cifrado com ansible-vault
-│   └── roles/
-│       ├── docker/             # engine, daemon, grupo do usuário
-│       └── app/                # clone, Dockerfile, build, container
-├── docs/
-│   ├── terraform.md            # como o Terraform funciona + anatomia dos .tf
-│   └── ansible.md              # como o Ansible funciona + anatomia das roles
-└── evidencias/
-    └── README.md               # tabela das 21 evidências
+An error occurred (UnauthorizedOperation) ... is not authorized to perform:
+ec2:DescribeInstances with an explicit deny in an identity-based policy:
+arn:aws:iam::...:policy/voc-cancel-cred
 ```
 
-O que veio da Atividade 1 e o que mudou está detalhado na seção seguinte.
+**`InvalidClientTokenId` em qualquer comando `aws`**
+Falta o `aws_session_token` em `~/.aws/credentials`. O Learner Lab entrega três
+valores; com dois, a autenticação nunca completa.
+
+**A aplicação não responde pelo DNS**
+Confira se a URL tem a porta. O Security Group abre apenas 22 e 3000; um
+hostname sem `:3000` vai para a porta 80 e resulta em timeout. Use
+`echo "$(terraform output -raw app_url_dns)"`, que monta a URL completa e ainda
+imprime a quebra de linha que o terminal precisa para reconhecer o link.
 
 ---
 
-## Da Atividade 1 ao Projeto Final
+## A integração Terraform → Ansible
 
-O enunciado autoriza e incentiva reaproveitar os módulos da Atividade 1. Esta
-seção registra exatamente o que foi herdado, o que foi adaptado e o que nasceu
-aqui — o `git log` mostra o mesmo, commit a commit, a partir de
-`chore: scaffold the final project from the atividade-1 base`.
+Aqui começa o memorial. Você já rodou o projeto; esta seção explica **como** o
+Ansible encontrou a máquina que o Terraform criou, sem nenhum arquivo escrito à
+mão entre os dois.
 
-A cópia foi deliberada, em vez de um módulo compartilhado entre as duas
-entregas. A Atividade 1 já foi avaliada e está marcada pela tag
-`entrega-atividade-1`; um módulo comum faria qualquer ajuste feito aqui alterar,
-retroativamente, o código daquela entrega.
+### Opção escolhida: **A — inventário dinâmico + execução manual**
 
-### O que veio inteiro
+O enunciado aceita duas formas. Esta entrega usa a **Opção A**: o Ansible
+descobre a infraestrutura consultando a API da EC2 através do plugin
+`amazon.aws.aws_ec2`, e o `ansible-playbook` é executado como um passo
+próprio, depois do `terraform apply`.
 
-| Componente | Situação |
-| --- | --- |
-| `modules/network/` | **Idêntico**, byte a byte. VPC, subnet derivada por `cidrsubnet()`, IGW, route table, rota e associação servem igual — a rede não muda por causa do que roda dentro da instância |
-| Guard de workspace | O `terraform_data` com `precondition` que recusa `apply` fora de `dev`/`prod` |
-| `default_tags` no provider | Mesma estratégia de tagging; ganhou importância nova, porque agora as tags são o que o Ansible consulta |
-| Backend S3 com `use_lockfile` | Mesma mecânica, `key` diferente |
+Com as duas etapas independentes, reexecutar só a configuração é um comando:
+você roda o playbook de novo, e o Terraform nem fica sabendo. Nenhum recurso
+precisa ser recriado para o Ansible rodar outra vez.
 
-### O que foi adaptado
+É isso que torna a segunda execução — a que comprova `changed=0` — apenas
+repetir um comando.
 
-O módulo `web-server` virou `docker-host`. O nome mudou porque a
-responsabilidade mudou: ele não serve mais uma página, entrega um host cru.
+### O que dispara o quê, em que ordem
 
-| | Atividade 1 (`web-server`) | Projeto Final (`docker-host`) |
+| # | Arquivo | O que faz, e o que isso produz |
 | --- | --- | --- |
-| `user_data` | Script de boot que instalava `httpd` e escrevia o HTML | **Removido.** Nada é instalado pelo Terraform |
-| `templates/` | `index.html.tftpl` e `user_data.sh.tftpl` | **Removidos** — a página agora é o container |
-| Porta publicada | 80 (`http_port`) | 3000 (`app_port`) |
-| `key_name` | Opcional (`default = null`) | **Obrigatório** — sem SSH o Ansible não alcança a máquina |
-| Tags da instância | `Name` | `Name` + `Role = "docker-host"`, que o inventário dinâmico filtra |
-| Variáveis | 15 | 7 — saíram as nove de conteúdo da página |
+| 1 | `terraform/main.tf` | Cria key pair, VPC e instância → uma EC2 com as tags `Project`, `Environment` e `Role` |
+| 2 | `terraform/providers.tf` | `default_tags` aplica `Project` e `Environment` a **todo** recurso → as tags que o passo 3 filtra |
+| 3 | `ansible/inventory/aws_ec2.yml` | Consulta a EC2 e converte tags em grupos → `role_docker_host`, `env_dev`, `env_prod` |
+| 4 | `ansible/ansible.cfg` | Aponta inventário, usuário e chave privada → conexão SSH sem flags na linha de comando |
+| 5 | `ansible/site.yml` | Mira `role_docker_host` e aplica as roles na ordem em que estão escritas |
+| 6 | `ansible/roles/docker` | Engine, daemon habilitado, usuário no grupo → host pronto para os módulos `community.docker` |
+| 7 | `ansible/roles/app` | Clona, renderiza o Dockerfile, builda e sobe o container → aplicação em `:3000` |
 
-Na raiz, a mesma subtração:
+Nada nesse encadeamento passa por arquivo escrito à mão: o único acoplamento
+entre as duas ferramentas são **as tags**.
 
-```diff
-- student_name, class_name, page_title, page_subtitle,
-- stack_items, course_name, professor_name    (conteúdo da página)
-- http_port                                    (renomeada)
-- key_name                                     (deixou de ser entrada do usuário)
-+ app_port                                     (a porta do container)
-+ public_key_path                              (a chave que o Terraform registra)
+### A costura: uma tag dos dois lados
+
+O ponto exato onde o Terraform encontra o Ansible:
+
+```hcl
+# terraform/providers.tf -- aplicado a todo recurso taggável
+default_tags {
+  tags = {
+    Environment = terraform.workspace          # dev | prod
+    Project     = var.project_name             # projeto-final-pos-devops-iac
+  }
+}
+```
+```hcl
+# terraform/modules/docker-host/main.tf -- na instância
+tags = merge(var.tags, {
+  Role = "docker-host"
+})
+```
+```yaml
+# ansible/inventory/aws_ec2.yml
+filters:
+  tag:Project: projeto-final-pos-devops-iac    # tem que casar com var.project_name
+  instance-state-name: running
+
+keyed_groups:
+  - key: tags.Role                             # docker-host -> role_docker_host
+    prefix: role
+  - key: tags.Environment                      # dev -> env_dev
+    prefix: env
+
+compose:
+  ansible_host: public_ip_address              # sem isto, o plugin entrega o DNS privado
 ```
 
-### O que nasceu aqui
+Trocar `var.project_name` de um lado sem trocar do outro faz o inventário
+voltar vazio — e o Ansible **não falha** nesse caso, apenas termina com
+`ok=0`, o que parece sucesso. É por isso que `ansible-inventory --graph` é um
+passo obrigatório do roteiro de execução, e não um comando de depuração.
 
-**`aws_key_pair`** — a Atividade 1 aceitava uma chave que já existisse na conta.
-Aqui o Terraform registra a sua própria, a partir de uma chave gerada
-localmente, porque o Ansible depende do SSH e o enunciado não admite recurso
-criado fora do código.
+### Onde cada abordagem executa
 
-**Todo o diretório `ansible/`** — inventário dinâmico, `site.yml`, as duas roles
-e o vault. É a metade da entrega que não tem precedente na Atividade 1.
+| Abordagem | Onde roda | Implicação |
+| --- | --- | --- |
+| `remote-exec` | Dentro do servidor | Configuraria a instância no lugar do Ansible. Proibido pelo enunciado |
+| `local-exec` | Na máquina do operador | Alternativa aceita pelo enunciado (Opção B). Roda como parte do `terraform apply`: a configuração deixa de ser um passo que se repete sozinho, e uma falha do Ansible marca o recurso do Terraform como problemático |
+| **inventário dinâmico** | Etapas separadas | **Adotado nesta entrega.** Cada ferramenta roda por conta própria: reexecutar a configuração não exige tocar na infraestrutura, e uma falha do Ansible não marca recurso nenhum do Terraform |
 
-**As tags como contrato.** Na Atividade 1 elas eram organização e rastreio de
-custo. Aqui `Project`, `Environment` e `Role` viraram interface entre duas
-ferramentas: mudar um valor sem mudar o filtro do inventário quebra o fluxo.
+Esta entrega adotou a terceira linha, e o código não tem **nenhum** bloco
+`provisioner`:
 
-### O que a Atividade 1 ensinou e não mudou
+```text
+$ grep -rn 'provisioner\|remote-exec' terraform --include='*.tf'
+terraform/modules/docker-host/main.tf:2:# installing software mixes the same responsibilities as provisioner
+terraform/modules/docker-host/main.tf:3:# "remote-exec" -- everything inside the instance belongs to Ansible.
+```
 
-As decisões de segurança e estilo atravessaram inteiras: IMDSv2 obrigatório,
-volume raiz cifrado, SSH restrito a um `/32`, regras de Security Group como
-recursos separados, AMI pelo SSM Parameter Store, `insecure_value` para o
-parâmetro não sair censurado do plano, validações nas variáveis dos módulos e
-código em inglês.
+As duas únicas ocorrências estão num comentário explicando por que o padrão
+não é usado.
+
+Manter o playbook fora do `terraform apply` muda duas coisas concretas: **o que
+custa rodar de novo** e **o que acontece quando o Ansible falha**. As duas
+seguem do mesmo fato — na Opção B o playbook é um passo de dentro do `apply`;
+na Opção A, um comando à parte.
+
+#### Rodar de novo
+
+Na Opção A é um comando: `ansible-playbook site.yml` outra vez, e o Terraform
+nem fica sabendo.
+
+Na Opção B, não. Um segundo `terraform apply` **não** reexecuta o playbook — o
+`null_resource` não mudou, então o provisioner não dispara. Para provar o
+`changed=0` que o enunciado cobra, você acaba rodando o playbook à parte assim
+mesmo, ou forçando a recriação do recurso.
+
+> [!NOTE]
+> Idempotência não é privilégio da Opção A. O Terraform é idempotente por
+> construção, e o `changed=0` do Ansible é cobrado nas duas opções. O que muda
+> é o custo de chegar lá.
+
+#### Quando o Ansible falha
+
+Ao terminar, o `ansible-playbook` devolve um **código de saída** — e na Opção B
+é esse número que o Terraform observa.
+
+Zero, e o `apply` segue como se nada tivesse acontecido. Qualquer outro valor, e
+três coisas acontecem em sequência:
+
+1. o `apply` termina com erro;
+2. o recurso onde o provisioner está declarado é marcado como *tainted*;
+3. o **próximo** `apply` destrói e recria esse recurso — o Terraform deixou de
+   confiar que ele foi configurado corretamente.
+
+O tamanho do estrago depende de onde o provisioner está declarado. Preso ao
+`aws_instance`, um erro de playbook custa **recriar a máquina inteira**. Num
+`null_resource` com `triggers`, como o enunciado sugere, recria só o recurso
+lógico, que não existe na AWS e não custa nada — é por isso que essa é a
+montagem recomendada da Opção B.
+
+Dá para desarmar com `on_failure = continue`, que faz o Terraform registrar o
+erro e seguir sem marcar nada:
+
+```hcl
+provisioner "local-exec" {
+  command    = "ansible-playbook ..."
+  on_failure = continue    # palavra nua, não string
+}
+```
+
+Mas isso troca uma falha barulhenta por uma silenciosa: o `apply` termina verde,
+o servidor fica sem configuração, e o problema reaparece mais tarde como "a
+aplicação não responde". Num fluxo em que o Ansible é a única coisa que instala
+software, é o pior negócio possível.
+
+Na Opção A nada disso existe: o `ansible-playbook` é um comando próprio, e uma
+falha dele não tem como marcar recurso nenhum do Terraform.
 
 ---
 
@@ -894,68 +873,91 @@ man-in-the-middle e deveria permanecer ativo.
 
 ---
 
-## Troubleshooting
+## Da Atividade 1 ao Projeto Final
 
-**`ansible-inventory --graph` volta vazio**
-A tag `Project` da instância não casa com o filtro do `aws_ec2.yml`, ou a
-instância ainda não está `running`. Confirme com
-`aws ec2 describe-instances --filters "Name=tag:Project,Values=..."`.
+O enunciado autoriza e incentiva reaproveitar os módulos da Atividade 1. Esta
+seção registra exatamente o que foi herdado, o que foi adaptado e o que nasceu
+aqui — o `git log` mostra o mesmo, commit a commit, a partir de
+`chore: scaffold the final project from the atividade-1 base`.
 
-**`UNREACHABLE! ... Connection timed out during banner exchange`**
-A instância respondeu ao Terraform antes do `sshd` terminar de subir — é o que
-a `evidencia_12` registra. Repetir o playbook resolve; nenhuma task chegou a
-executar, então não há estado parcial.
+A cópia foi deliberada, em vez de um módulo compartilhado entre as duas
+entregas. A Atividade 1 já foi avaliada e está marcada pela tag
+`entrega-atividade-1`; um módulo comum faria qualquer ajuste feito aqui alterar,
+retroativamente, o código daquela entrega.
 
-**O playbook trava em `Gathering Facts` depois de uma falha de conexão**
-O Ansible reaproveita conexões SSH via `ControlMaster`. Uma conexão que morreu
-deixa o socket para trás e as execuções seguintes esperam por um mestre que
-não existe mais:
+### O que veio inteiro
 
-```bash
-rm -f ~/.ansible/cp/*
+| Componente | Situação |
+| --- | --- |
+| `modules/network/` | **Idêntico**, byte a byte. VPC, subnet derivada por `cidrsubnet()`, IGW, route table, rota e associação servem igual — a rede não muda por causa do que roda dentro da instância |
+| Guard de workspace | O `terraform_data` com `precondition` que recusa `apply` fora de `dev`/`prod` |
+| `default_tags` no provider | Mesma estratégia de tagging; ganhou importância nova, porque agora as tags são o que o Ansible consulta |
+| Backend S3 com `use_lockfile` | Mesma mecânica, `key` diferente |
+
+### O que foi adaptado
+
+O módulo `web-server` virou `docker-host`. O nome mudou porque a
+responsabilidade mudou: ele não serve mais uma página, entrega um host cru.
+
+| | Atividade 1 (`web-server`) | Projeto Final (`docker-host`) |
+| --- | --- | --- |
+| `user_data` | Script de boot que instalava `httpd` e escrevia o HTML | **Removido.** Nada é instalado pelo Terraform |
+| `templates/` | `index.html.tftpl` e `user_data.sh.tftpl` | **Removidos** — a página agora é o container |
+| Porta publicada | 80 (`http_port`) | 3000 (`app_port`) |
+| `key_name` | Opcional (`default = null`) | **Obrigatório** — sem SSH o Ansible não alcança a máquina |
+| Tags da instância | `Name` | `Name` + `Role = "docker-host"`, que o inventário dinâmico filtra |
+| Variáveis | 15 | 7 — saíram as nove de conteúdo da página |
+
+Na raiz, a mesma subtração:
+
+```diff
+- student_name, class_name, page_title, page_subtitle,
+- stack_items, course_name, professor_name    (conteúdo da página)
+- http_port                                    (renomeada)
+- key_name                                     (deixou de ser entrada do usuário)
++ app_port                                     (a porta do container)
++ public_key_path                              (a chave que o Terraform registra)
 ```
 
-**`Error acquiring the state lock` com `PreconditionFailed`**
-Lock órfão de um `terraform` interrompido. Confirme que nenhum processo está
-ativo (`pgrep -a terraform`) e destrave com o ID informado na mensagem:
+### O que nasceu aqui
 
-```bash
-terraform force-unlock <LOCK_ID>
-```
+**`aws_key_pair`** — a Atividade 1 aceitava uma chave que já existisse na conta.
+Aqui o Terraform registra a sua própria, a partir de uma chave gerada
+localmente, porque o Ansible depende do SSH e o enunciado não admite recurso
+criado fora do código.
 
-Nunca use `-lock=false` para contornar: é o caminho que corrompe state.
+**Todo o diretório `ansible/`** — inventário dinâmico, `site.yml`, as duas roles
+e o vault. É a metade da entrega que não tem precedente na Atividade 1.
 
-**`[WARNING]: Found variable using reserved name 'tags'`**
-O plugin `aws_ec2` publica as tags da instância numa hostvar chamada `tags`, e
-`tags` é uma das 76 palavras reservadas do Ansible. O aviso é inofensivo:
-nenhuma task do projeto usa `tags` como palavra-chave, e o `keyed_groups`
-resolve as tags dentro do plugin, antes da resolução de variáveis.
+**As tags como contrato.** Na Atividade 1 elas eram organização e rastreio de
+custo. Aqui `Project`, `Environment` e `Role` viraram interface entre duas
+ferramentas: mudar um valor sem mudar o filtro do inventário quebra o fluxo.
 
-**`UnauthorizedOperation` com `explicit deny` na policy `voc-cancel-cred`**
-A sessão do Learner Lab terminou. As credenciais ainda existem em
-`~/.aws/credentials`, mas o lab anexou uma policy de negação explícita — por
-isso o erro fala em autorização, e não em token inválido. Reinicie o lab e cole
-as credenciais novas; não é erro de código.
+### O que a Atividade 1 ensinou e não mudou
 
-```text
-An error occurred (UnauthorizedOperation) ... is not authorized to perform:
-ec2:DescribeInstances with an explicit deny in an identity-based policy:
-arn:aws:iam::...:policy/voc-cancel-cred
-```
-
-**`InvalidClientTokenId` em qualquer comando `aws`**
-Falta o `aws_session_token` em `~/.aws/credentials`. O Learner Lab entrega três
-valores; com dois, a autenticação nunca completa.
-
-**A aplicação não responde pelo DNS**
-Confira se a URL tem a porta. O Security Group abre apenas 22 e 3000; um
-hostname sem `:3000` vai para a porta 80 e resulta em timeout. Use
-`echo "$(terraform output -raw app_url_dns)"`, que monta a URL completa e ainda
-imprime a quebra de linha que o terminal precisa para reconhecer o link.
+As decisões de segurança e estilo atravessaram inteiras: IMDSv2 obrigatório,
+volume raiz cifrado, SSH restrito a um `/32`, regras de Security Group como
+recursos separados, AMI pelo SSM Parameter Store, `insecure_value` para o
+parâmetro não sair censurado do plano, validações nas variáveis dos módulos e
+código em inglês.
 
 ---
 
-## Referência conceitual
+## Referências
+
+### Evidências da entrega
+
+As 21 evidências da execução completa — `apply` e `destroy` nos dois workspaces,
+as duas execuções do playbook que provam o `changed=0`, a aplicação no navegador
+pelo IP e pelo DNS, e o vault cifrado — estão em
+**[`evidencias/`](evidencias/README.md)**, com uma tabela dizendo o que cada
+arquivo prova.
+
+> O IP residencial do operador aparece como `203.0.113.42/32` (RFC 5737) e o
+> ID da conta como `123456789012`. O que a evidência prova — porta 22 restrita
+> a um único `/32` — não muda.
+
+### Como as ferramentas funcionam
 
 O que cada ferramenta faz, como ela decide o que fazer, e o passeio arquivo por
 arquivo pelo código desta entrega ficam em dois documentos à parte, para este
