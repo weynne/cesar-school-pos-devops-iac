@@ -5,14 +5,16 @@ Código (IaC) e Gerenciamento de Configuração**, da especialização em DevOps
 CESAR School.
 
 São duas entregas, cada uma em seu próprio diretório, com código, evidências,
-documentação e state remoto separados. Este arquivo é só o índice: a
-documentação completa de cada entrega — arquitetura, passo a passo, decisões e
-troubleshooting — vive no README do diretório correspondente.
+documentação e state remoto separados. Este arquivo é só o índice. A
+documentação de cada entrega vive no README do diretório correspondente, e abre
+com um **Início rápido**: o caminho mais curto do clone até a infraestrutura no
+ar, antes de qualquer explicação.
 
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white)
 ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
 ---
 
@@ -22,31 +24,18 @@ troubleshooting — vive no README do diretório correspondente.
 
 Provisionamento e configuração integrados: o Terraform entrega uma VPC e uma
 EC2 crua; o Ansible instala o Docker Engine e sobe o container da aplicação
-[`getting-started-app`](https://github.com/docker/getting-started-app) na porta
-3000. A ligação entre as duas ferramentas é o **inventário dinâmico**
-`amazon.aws.aws_ec2`, que descobre a instância pelas tags que o Terraform
-aplicou.
-
-📄 [`projeto-final/README.md`](projeto-final/README.md) ·
-💻 [`projeto-final/`](projeto-final/) ·
-📸 [`projeto-final/evidencias/`](projeto-final/evidencias/)
+`getting-started-app` na porta 3000. A ligação entre as duas ferramentas é o
+inventário dinâmico `amazon.aws.aws_ec2`, que descobre a instância pelas tags
+que o Terraform aplicou.
 
 ### [Atividade 1 — Terraform na AWS](atividade-1/README.md)
 
 Provisionamento da infraestrutura mínima para hospedar uma página web: VPC
 própria, subnet pública, Internet Gateway, Security Group e uma EC2 servindo
 HTML via `httpd`, com state remoto no S3 e os ambientes `dev` e `prod`. Os
-módulos desta entrega são a base que o Projeto Final reaproveitou.
-
-📄 [`atividade-1/README.md`](atividade-1/README.md) ·
-💻 [`atividade-1/`](atividade-1/) ·
-📸 [`atividade-1/evidencias/`](atividade-1/evidencias/) ·
-🏷️ tag [`entrega-atividade-1`](https://github.com/weynne/cesar-school-pos-devops-iac/releases/tag/entrega-atividade-1)
-
-> A seção
-> [Da Atividade 1 ao Projeto Final](projeto-final/README.md#da-atividade-1-ao-projeto-final)
-> registra o que foi herdado inteiro, o que foi adaptado e o que nasceu na
-> segunda entrega.
+módulos desta entrega são a base que o Projeto Final reaproveitou — o que foi
+herdado, adaptado e criado do zero está registrado no README dele. Marcada pela
+tag `entrega-atividade-1`.
 
 ---
 
@@ -83,7 +72,7 @@ duas foi de **código**, copiando os módulos, não de infraestrutura.
 | **Ambientes** | Workspaces `dev` e `prod`, com CIDR e nomes derivados de `terraform.workspace` |
 | **Tags** | Aplicadas a todo recurso taggável via `default_tags`, em inglês |
 | **Idioma** | Código, nomes e comentários em **inglês**; documentação em **português** |
-| **Commits** | [Conventional Commits](https://www.conventionalcommits.org/pt-br/), com escopo por componente |
+| **Commits** | Conventional Commits, com escopo por componente |
 | **Evidências** | Saídas de terminal em `.md` e capturas em `.png`, numeradas na ordem em que foram geradas, com IP residencial e ID de conta redigidos |
 
 > [!IMPORTANT]
@@ -94,23 +83,11 @@ duas foi de **código**, copiando os módulos, não de infraestrutura.
 
 ---
 
-## Por onde começar
-
-Cada README abre com um **Início rápido**: o caminho mais curto do clone até a
-infraestrutura no ar, com todos os comandos prontos e sem explicação no meio.
-Depois dele vêm as seções que explicam cada decisão, o passeio arquivo por
-arquivo e o troubleshooting.
-
-- [Início rápido do Projeto Final](projeto-final/README.md#início-rápido)
-- [Início rápido da Atividade 1](atividade-1/README.md#início-rápido)
-
----
-
 ## Créditos
 
 Disciplina de **Infraestrutura como Código (IaC) e Gerenciamento de Configuração**,
 ministrada por **Cris Apolinário**, na especialização em DevOps da CESAR School.
 
-Autoria: **Weynne Guimarães** · [wjgcl@cesar.school](mailto:wjgcl@cesar.school)
+Autoria: **Weynne Guimarães** · wjgcl@cesar.school
 
 Distribuído sob a licença [MIT](LICENSE).

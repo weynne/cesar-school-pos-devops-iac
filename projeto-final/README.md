@@ -50,7 +50,7 @@ São **13 recursos por workspace**: 12 na AWS e um `terraform_data` que atua
 como guard de workspace.
 
 ```mermaid
-flowchart TB
+flowchart LR
     User(["🌐 Internet"])
 
     subgraph AWS["☁️ AWS · us-east-1"]
